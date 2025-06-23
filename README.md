@@ -2,6 +2,8 @@
 
 **Author:** [Blindsinner](https://github.com/Blindsinner)
 
+![Game Visual](https://github.com/Blindsinner/Grand-Strategy-Simulator-Total-War---Iran-vs.-Israel/blob/main/Visual.png?raw=true)
+
 ## 1. Introduction
 
 This project is a detailed, turn-based grand strategy wargame simulating a modern conflict between Iran and Israel. It is designed to be a realistic simulation focusing on resource management, strategic military operations, diplomatic maneuvering, and asymmetric warfare. The game is built as a single, self-contained HTML file that runs directly in your browser.
