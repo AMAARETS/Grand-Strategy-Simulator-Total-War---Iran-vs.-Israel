@@ -52,6 +52,8 @@ The "Intelligence" and "AI Strategic Counsel" features in the Command Center req
     ```javascript
     // --- Gemini API (For AI advice ONLY) ---
     const API_KEY = "YOUR_API_KEY_HERE"; // IMPORTANT: Replace with your actual Gemini API key
+    const API_URL = `https://generativelanguage.googleapis.com/v1beta/models/gemini-2.5-flash:generateContent?key=${API_KEY}`; //Change the model according to your preference
+
     ```
 4.  **Replace the Key:** Replace the text `"YOUR_API_KEY_HERE"` with the actual key you generated from Google. Save the file.
 
