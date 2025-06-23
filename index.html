@@ -1,0 +1,2398 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0">
+    <title>Conflict Simulation v11.2 (Complete & Verified)</title>
+    <script src="https://cdn.tailwindcss.com"></script>
+    <link href="https://fonts.googleapis.com/css2?family=Roboto+Mono:wght@400;700&display=swap" rel="stylesheet">
+    <style>
+        body { font-family: 'Roboto Mono', monospace; background-color: #111827; color: #e5e7eb; }
+        .faction-israel { color: #60a5fa; }
+        .faction-iran { color: #4ade80; }
+        #map-container { position: relative; width: 100%; height: 100%; background-color: #0c2444; overflow: hidden; }
+        #gameCanvas { position: absolute; top: 0; left: 0; width: 100%; height: 100%; cursor: pointer; z-index: 2; }
+        .log-entry { border-left: 2px solid #374151; padding-left: 8px; margin-bottom: 4px; transition: opacity 0.3s; }
+        #gameModeModal, #loadingModal, #strategyModal, #commandCenterModal, #diplomacyModal, #userIntelModal { transition: opacity 0.3s ease; }
+        #commandCenterModal, #diplomacyModal, #userIntelModal { backdrop-filter: blur(5px); }
+        .cnc-tab-button.active { border-bottom-width: 4px; }
+        .cnc-tab-button.faction-israel.active { border-color: #60a5fa; }
+        .cnc-tab-button.faction-iran.active { border-color: #4ade80; }
+        .cnc-tab-content { display: none; }
+        .cnc-tab-content.active { display: block; }
+        .cnc-list-item.selected { background-color: rgba(255, 255, 255, 0.1); }
+        .progress-bar-container { overflow: hidden; }
+        .progress-bar { transition: width 0.5s; }
+        .threat-imminent { color: #f87171; border-left-color: #f87171; }
+        .threat-potential { color: #facc15; border-left-color: #facc15; }
+        .threat-low { color: #a3a3a3; border-left-color: #a3a3a3; }
+        #cheatConsole { transition: opacity 0.3s ease; }
+    </style>
+</head>
+<body class="p-4 sm:p-6 lg:p-8 space-y-6">
+
+    <div id="loadingModal" class="fixed inset-0 bg-black bg-opacity-80 flex-col items-center justify-center z-50 hidden">
+        <div class="animate-spin rounded-full h-16 w-16 border-b-2 border-white mb-4"></div>
+        <h2 class="text-2xl font-bold text-white mb-4">Establishing Scenario...</h2>
+        <p class="text-gray-400" id="loadingStatus">Loading Historical Intelligence...</p>
+    </div>
+
+    <div id="gameModeModal" class="fixed inset-0 bg-black bg-opacity-80 flex items-center justify-center z-50">
+        <div class="bg-stone-800 rounded-lg p-8 shadow-2xl border border-stone-700 w-full max-w-md text-center">
+            <h1 class="text-3xl font-bold mb-6 text-stone-200">Conflict Simulation v11.2</h1>
+            <p class="text-stone-400 mb-8">Choose your engagement model.</p>
+            <div class="space-y-4">
+                <button id="playAsIsrael" class="w-full text-white font-bold py-3 px-4 rounded-lg transition-all duration-300 shadow-lg flex items-center justify-center gap-2 disabled:bg-stone-700 disabled:cursor-not-allowed bg-blue-600 hover:bg-blue-500">Play as Israel</button>
+                <button id="playAsIran" class="w-full text-white font-bold py-3 px-4 rounded-lg transition-all duration-300 shadow-lg flex items-center justify-center gap-2 disabled:bg-stone-700 disabled:cursor-not-allowed bg-green-600 hover:bg-green-500">Play as Iran</button>
+                <button id="spectatorMode" class="w-full text-white font-bold py-3 px-4 rounded-lg transition-all duration-300 shadow-lg flex items-center justify-center gap-2 disabled:bg-stone-700 disabled:cursor-not-allowed bg-stone-600 hover:bg-stone-500">Spectator Mode (AI vs AI)</button>
+            </div>
+        </div>
+    </div>
+    
+    <div id="userIntelModal" class="fixed inset-0 bg-black bg-opacity-80 hidden items-center justify-center z-50 p-4">
+        <div class="bg-stone-800 rounded-lg p-6 shadow-2xl border-2 border-yellow-400 w-full max-w-3xl flex flex-col gap-4">
+            <h2 class="text-2xl font-bold text-yellow-300">Update Timeline with Latest Intel</h2>
+            <p class="text-stone-300 text-sm">The known factual history ends on the date below. To bridge the timeline to the present, copy the prompt and paste it into an AI. Then, paste the AI's full JSON response into the text box below and load it.</p>
+            <div>
+                <label class="font-bold text-stone-400">Prompt for AI (Click to Copy):</label>
+                <pre id="aiPrompt" class="text-xs bg-black/30 p-3 rounded-md mt-1 whitespace-pre-wrap cursor-pointer hover:bg-black/50"></pre>
+            </div>
+            <div>
+                <label for="userJsonInput" class="font-bold text-stone-400">Paste AI's JSON Response Here:</label>
+                <textarea id="userJsonInput" rows="8" class="w-full mt-1 p-2 bg-black/30 text-stone-200 rounded-md border border-stone-600 focus:ring-2 focus:ring-yellow-400 focus:border-yellow-400"></textarea>
+            </div>
+            <div id="userIntelError" class="text-red-400 text-sm hidden"></div>
+            <div class="grid grid-cols-2 gap-4">
+                <button id="loadUserIntelBtn" class="w-full text-white font-bold py-3 px-4 rounded-lg transition-all duration-300 shadow-lg flex items-center justify-center gap-2 disabled:bg-stone-700 disabled:cursor-not-allowed bg-green-600 hover:bg-green-500">Load Intel</button>
+                <button id="skipUserIntelBtn" class="w-full text-white font-bold py-3 px-4 rounded-lg transition-all duration-300 shadow-lg flex items-center justify-center gap-2 disabled:bg-stone-700 disabled:cursor-not-allowed bg-gray-600 hover:bg-gray-500">Skip & Start Game</button>
+            </div>
+        </div>
+    </div>
+
+    <div id="strategyModal" class="fixed inset-0 bg-black bg-opacity-80 flex-col items-center justify-center z-40 hidden">
+        <div class="bg-stone-800 rounded-lg p-8 shadow-2xl border border-stone-700 w-full max-w-2xl">
+            <h2 id="strategyTitle" class="text-3xl font-bold mb-6 text-stone-200 text-center">AI Strategic Counsel</h2>
+            <div id="strategyOptions" class="space-y-4 max-h-[60vh] overflow-y-auto pr-2"></div>
+             <button id="closeStrategyModal" class="w-full text-white font-bold py-3 px-4 rounded-lg transition-all duration-300 shadow-lg flex items-center justify-center gap-2 disabled:bg-stone-700 disabled:cursor-not-allowed bg-gray-600 hover:bg-gray-500 mt-6">Close</button>
+        </div>
+    </div>
+    
+    <div id="diplomacyModal" class="fixed inset-0 bg-black bg-opacity-90 hidden items-center justify-center z-50 p-4">
+       <div id="diplomacy-container" class="bg-stone-800 rounded-lg p-6 shadow-2xl border-2 w-full max-w-2xl relative flex flex-col">
+             <div class="flex justify-between items-center border-b-2 pb-3 mb-4">
+                <h1 id="diplomacy-title" class="text-2xl sm:text-3xl font-bold">Diplomatic Channels</h1>
+                <button id="closeDiplomacyModal" class="text-white bg-red-600 hover:bg-red-500 rounded-full w-8 h-8 sm:w-10 sm:h-10 flex items-center justify-center font-bold text-xl">X</button>
+            </div>
+            <div id="diplomacy-content" class="overflow-y-auto">
+            </div>
+       </div>
+    </div>
+
+    <div id="commandCenterModal" class="fixed inset-0 bg-black bg-opacity-90 hidden items-center justify-center z-40 p-4 sm:p-8">
+        <div id="cnc-container" class="bg-stone-900/60 rounded-lg p-4 sm:p-6 shadow-2xl border-2 w-full max-w-7xl h-full max-h-[90vh] text-left relative flex flex-col">
+            <div class="flex justify-between items-center border-b-2 pb-3 mb-4">
+                <h1 id="cnc-title" class="text-2xl sm:text-4xl font-bold"></h1>
+                <button id="closeCommandCenter" class="text-white bg-red-600 hover:bg-red-500 rounded-full w-8 h-8 sm:w-10 sm:h-10 flex items-center justify-center font-bold text-xl">X</button>
+            </div>
+            <div id="cnc-tabs" class="flex-shrink-0 flex space-x-1 sm:space-x-4 border-b-2 border-stone-700"></div>
+            <div id="cnc-content" class="flex-grow overflow-y-auto mt-4 pr-2"></div>
+        </div>
+    </div>
+
+    <div class="w-full max-w-7xl mx-auto bg-stone-800 rounded-lg shadow-2xl p-4 border border-stone-700">
+        <h1 class="text-2xl sm:text-3xl lg:text-4xl font-bold text-center text-gray-200 mb-2">Grand Strategy Simulator: Total War</h1>
+        
+        <div class="my-4">
+            <h3 class="font-bold text-lg mb-2 text-stone-400 text-center">Balance of Power</h3>
+            <div id="warProgressBarContainer" class="w-full bg-gray-700 rounded-full h-6 flex overflow-hidden border-2 border-gray-500 shadow-inner">
+                <div id="israel-progress" class="bg-blue-500 h-full transition-all duration-500 ease-in-out flex items-center justify-center text-xs font-bold text-white" style="width: 50%;"></div>
+                <div id="iran-progress" class="bg-green-500 h-full transition-all duration-500 ease-in-out flex items-center justify-center text-xs font-bold text-white" style="width: 50%;"></div>
+            </div>
+        </div>
+
+        <div class="grid grid-cols-1 lg:grid-cols-3 gap-6">
+            <div class="lg:col-span-2 bg-stone-900 rounded-lg overflow-hidden border border-gray-700 aspect-video relative" id="map-container">
+                <canvas id="gameCanvas"></canvas>
+                <div id="timeDisplay" class="absolute top-2 left-2 bg-black bg-opacity-50 text-white p-2 rounded z-10 pointer-events-none"></div>
+            </div>
+
+            <div class="flex flex-col space-y-4">
+                <div id="turnIndicator" class="text-center p-4 rounded-lg font-bold text-2xl transition-all duration-300"></div>
+                <div id="infoPanel" class="bg-stone-900/70 p-4 rounded-lg border border-gray-700 h-64 overflow-y-auto"></div>
+                <div id="actionPanel" class="bg-stone-900/70 p-4 rounded-lg border border-gray-700 flex-grow"></div>
+                <div class="grid grid-cols-2 gap-2">
+                    <button id="commandCenterBtn" class="w-full text-white font-bold py-3 px-4 rounded-lg transition-all duration-300 shadow-lg flex items-center justify-center gap-2 disabled:bg-stone-700 disabled:cursor-not-allowed bg-cyan-700 hover:bg-cyan-600">🏛️ Command Center</button>
+                    <button id="diplomacyBtn" class="w-full text-white font-bold py-3 px-4 rounded-lg transition-all duration-300 shadow-lg flex items-center justify-center gap-2 disabled:bg-stone-700 disabled:cursor-not-allowed bg-purple-700 hover:bg-purple-600">🤝 Diplomacy</button>
+                </div>
+                 <div class="grid grid-cols-2 gap-2">
+                    <button id="endTurnBtn" class="w-full text-white font-bold py-3 px-4 rounded-lg transition-all duration-300 shadow-lg flex items-center justify-center gap-2 disabled:bg-stone-700 disabled:cursor-not-allowed">End Turn</button>
+                    <button id="startOverBtn" class="w-full text-white font-bold py-3 px-4 rounded-lg transition-all duration-300 shadow-lg flex items-center justify-center gap-2 disabled:bg-stone-700 disabled:cursor-not-allowed bg-yellow-600 hover:bg-yellow-500">Start Over</button>
+                </div>
+                <div class="grid grid-cols-2 gap-2">
+                    <button id="exportLogBtn" class="w-full text-white font-bold py-3 px-4 rounded-lg transition-all duration-300 shadow-lg flex items-center justify-center gap-2 disabled:bg-stone-700 disabled:cursor-not-allowed bg-gray-600 hover:bg-gray-500">Export Log</button>
+                    <button id="endGameBtn" class="w-full text-white font-bold py-3 px-4 rounded-lg transition-all duration-300 shadow-lg flex items-center justify-center gap-2 disabled:bg-stone-700 disabled:cursor-not-allowed bg-red-600 hover:bg-red-500">End Game</button>
+                </div>
+                <button id="beginSimBtn" class="w-full text-white font-bold py-3 px-4 rounded-lg transition-all duration-300 shadow-lg flex items-center justify-center gap-2 disabled:bg-stone-700 disabled:cursor-not-allowed bg-green-600 hover:bg-green-500 hidden">Begin Future Simulation</button>
+            </div>
+        </div>
+        
+        <div class="mt-4 bg-stone-900/70 p-4 rounded-lg border border-gray-700">
+            <h3 class="font-bold text-lg mb-2 text-stone-400">Conflict Log</h3>
+            <div id="gameLog" class="h-48 overflow-y-auto text-sm space-y-1 pr-2"></div>
+        </div>
+    </div>
+    
+    <div id="cheatConsole" class="hidden fixed bottom-0 left-0 right-0 bg-black/80 p-4 text-sm font-mono z-50 transition-opacity">
+        <div id="cheatOutput" class="h-40 overflow-y-auto mb-2 text-white"></div>
+        <input type="text" id="cheatInput" class="w-full bg-gray-700 text-white p-2 rounded" placeholder="Enter command or chat message..." />
+    </div>
+
+<script>
+// ===================================================================================
+//
+//  Conflict Simulation v11.1 (Final Verified Build)
+//
+// ===================================================================================
+document.addEventListener('DOMContentLoaded', () => {
+    // --- Get DOM Elements ---
+    const canvas = document.getElementById('gameCanvas');
+    const ctx = canvas.getContext('2d');
+    const mapContainer = document.getElementById('map-container');
+    const timeDisplay = document.getElementById('timeDisplay');
+    const modal = document.getElementById('gameModeModal');
+    const loadingModal = document.getElementById('loadingModal');
+    const loadingStatus = document.getElementById('loadingStatus');
+    const strategyModal = document.getElementById('strategyModal');
+    const commandCenterModal = document.getElementById('commandCenterModal');
+    const diplomacyModal = document.getElementById('diplomacyModal');
+    const userIntelModal = document.getElementById('userIntelModal');
+    const turnIndicator = document.getElementById('turnIndicator');
+    const infoPanel = document.getElementById('infoPanel');
+    const actionPanel = document.getElementById('actionPanel');
+    const gameLog = document.getElementById('gameLog');
+    const endTurnBtn = document.getElementById('endTurnBtn');
+    const beginSimBtn = document.getElementById('beginSimBtn');
+    const startOverBtn = document.getElementById('startOverBtn');
+    const exportLogBtn = document.getElementById('exportLogBtn');
+    const endGameBtn = document.getElementById('endGameBtn');
+    const commandCenterBtn = document.getElementById('commandCenterBtn');
+    const diplomacyBtn = document.getElementById('diplomacyBtn');
+    const closeCommandCenterBtn = document.getElementById('closeCommandCenter');
+    const closeStrategyModalBtn = document.getElementById('closeStrategyModal');
+    const closeDiplomacyModalBtn = document.getElementById('closeDiplomacyModal');
+    const cheatConsole = document.getElementById('cheatConsole');
+    const cheatOutput = document.getElementById('cheatOutput');
+    const cheatInput = document.getElementById('cheatInput');
+    const israelProgress = document.getElementById('israel-progress');
+    const iranProgress = document.getElementById('iran-progress');
+    
+    // --- Gemini API (For AI advice ONLY) ---
+    const API_KEY = "YOUR_API_KEY_HERE; // IMPORTANT: Replace with your actual Gemini API key
+    const API_URL = `https://generativelanguage.googleapis.com/v1beta/models/gemini-1.5-flash:generateContent?key=${API_KEY}`; //change your model according to your need like gemini-1.5-flash/gemini-2.5-flash/gemini-1.5-pro
+    
+    // --- PROMPTS FOR GEMINI API ---
+    // These functions generate the text prompts for the AI.
+    const getStrategicCounselPrompt = () => `You are "ODIN" (Omniscient Defense Intelligence Network), a strategic AI advisor for the commander of the "${gameState.playerFaction}" faction in a complex wargame simulation. Analyze the provided comprehensive game state and generate three distinct, high-level, actionable strategic priorities for the upcoming turn. **Current Game State (JSON):** \`\`\`json ${JSON.stringify({player_faction:gameState.playerFaction, turn_number:gameState.turnNumber, player_status:{budget:gameState[gameState.playerFaction.toLowerCase()].budget, morale:gameState[gameState.playerFaction.toLowerCase()].morale}, enemy_status:{name:gameState.playerFaction===FACTIONS.ISRAEL?FACTIONS.IRAN:FACTIONS.ISRAEL}})} \`\`\` **Instructions:** Output ONLY a single, valid JSON object. The JSON object must have a single key "priorities", which is an array of three objects. Each object must contain: "priority", "type", "title", and "justification".`;
+    const getProbableActionsPrompt = () => `You are an intelligence analysis AI. Based on the current battlefield situation, predict the enemy's three most probable actions for their next turn. **Current Game State (JSON):** \`\`\`json {"enemy_faction":"${gameState.playerFaction===FACTIONS.ISRAEL?FACTIONS.IRAN:FACTIONS.ISRAEL}","enemy_units":${JSON.stringify(gameState.units.filter(u=>u.faction!==gameState.playerFaction&&u.faction!==null&&isVisible(u,gameState.playerFaction)).map(u=>({type:u.typeName,location:gameState.nodes[u.nodeId].name,hp:u.currentHp})))},"high_value_targets":${JSON.stringify(Object.values(gameState.nodes).filter(n=>n.faction===gameState.playerFaction&&(n.capital||n.strategic||n.production)).map(n=>n.name))}} \`\`\` **Instructions:** Output ONLY a single, valid JSON object. The JSON object must have a single key "predictions", which must be an array of three strings.`;
+    
+    // --- Game Constants ---
+    const FACTIONS = { ISRAEL: 'Israel', IRAN: 'Iran' };
+    const ALLIES = { USA: 'USA', RUSSIA: 'Russia', CHINA: 'China' };
+    const sleep = ms => new Promise(res => setTimeout(res, ms));
+    let lastFrameTime = 0;
+    let animationFrameId;
+    
+    // --- Cheat/Dev Console State ---
+    const konamiCode = ['arrowup', 'arrowup', 'arrowdown', 'arrowdown', 'arrowleft', 'arrowright', 'arrowleft', 'arrowright', 'b', 'a'];
+    let konamiIndex = 0;
+    let godModeActive = false;
+    let previousGameState = null;
+
+    // --- Core Game Classes and Objects ---
+    class Faction {
+        constructor(name, baseBudget, morale = 100) {
+            this.name = name;
+            this.budget = baseBudget;
+            this.logistics = 100;
+            this.morale = morale;
+            this.nukeProg = name === FACTIONS.ISRAEL ? 25 : 0;
+            this.nukeReady = false;
+            this.empProg = 0;
+            this.empReady = false;
+            this.cyberDefense = 70;
+            this.aidRequestCooldown = 0;
+            this.cyberAttackCooldown = 0;
+            this.droneSwarmCooldown = 0;
+            this.seadStrikeCooldown = 0;
+            this.proxyAttackCooldown = 0;
+            this.ballisticStrikeCooldown = 0;
+            this.nuclearSiteStrikeCooldown = 0;
+            this.fattah1Stockpile = name === FACTIONS.IRAN ? 8 : 0;
+        }
+    }
+
+    const UNIT_TYPES = {
+        'Merkava IV Barak':{hp:130,attack:45,defense:40,range:2,moves:1,cost:600,icon:'🛡️',faction:FACTIONS.ISRAEL,tags:['ground','armor'],supply:100,radarRange:2},'F-35I Adir':{hp:90,attack:60,defense:25,range:6,moves:3,cost:1200,icon:'✈️',faction:FACTIONS.ISRAEL,tags:['air','stealth','strategic_striker','high_value'],supply:80,radarRange:4},'F-15EX Eagle II':{hp:100,attack:65,defense:30,range:5,moves:3,cost:1500,icon:'✈️',faction:FACTIONS.ISRAEL,tags:['air','bomber','strategic_striker','high_value'],supply:90,radarRange:4},'Iron Dome':{hp:80,attack:0,defense:15,range:2,moves:0,cost:800,icon:'📡',faction:FACTIONS.ISRAEL,tags:['defense','interceptor','short_range','high_value','air_defense'],supply:50,radarRange:3},'Arrow 3':{hp:100,attack:0,defense:20,range:4,moves:0,cost:1000,icon:'🛰️',faction:FACTIONS.ISRAEL,tags:['defense','interceptor','long_range','high_value','air_defense'],supply:60,radarRange:5},'Cyber Command':{hp:60,attack:0,defense:15,range:5,moves:1,cost:700,icon:'💻',faction:FACTIONS.ISRAEL,tags:['support','ew','jammer','high_value'],supply:40},'Naval Corvette':{hp:110,attack:50,defense:30,range:3,moves:2,cost:900,icon:'🚢',faction:FACTIONS.ISRAEL,tags:['naval'],supply:70,radarRange:4},'Jericho III':{hp:50,attack:100,defense:10,range:8,moves:1,cost:1500,icon:'🚀',faction:FACTIONS.ISRAEL,tags:['artillery','missile_like','ballistic','high_value'],supply:40},'Quds Force':{hp:90,attack:30,defense:20,range:1,moves:2,cost:300,icon:'⚔️',faction:FACTIONS.IRAN,tags:['ground','infantry','stealth'],supply:50},'Karrar Tank':{hp:110,attack:35,defense:25,range:2,moves:1,cost:400,icon:'T',faction:FACTIONS.IRAN,tags:['ground','armor'],supply:60,radarRange:2},'Simorgh Bomber':{hp:110,attack:75,defense:20,range:7,moves:2,cost:1300,icon:'✈️',faction:FACTIONS.IRAN,tags:['air','bomber','high_value'],supply:100,radarRange:3},'Shahed-136':{hp:30,attack:40,defense:5,range:6,moves:2,cost:200,icon:'💥',faction:FACTIONS.IRAN,tags:['air','drone','missile_like'],supply:20},'Fattah-1':{hp:40,attack:80,defense:10,range:7,moves:1,cost:900,icon:'🚀',faction:FACTIONS.IRAN,tags:['artillery','missile_like','hypersonic','elite','high_value'],supply:30},'S-300PMU2':{hp:100,attack:15,defense:25,range:5,moves:0,cost:850,icon:'📶',faction:FACTIONS.IRAN,tags:['defense','air_defense','elite','high_value'],radarRange:6},'Zulfiqar Corvette':{hp:100,attack:45,defense:25,range:3,moves:2,cost:700,icon:'🚢',faction:FACTIONS.IRAN,tags:['naval'],supply:65,radarRange:4},'F-22 Raptor':{hp:110,attack:70,defense:30,range:5,moves:3,cost:0,icon:'🇺🇸✈️',faction:FACTIONS.ISRAEL,tags:['air','stealth','ally_unit','high_value'],supply:90,radarRange:5},'Su-57 Felon':{hp:105,attack:65,defense:25,range:5,moves:3,cost:0,icon:'🇷🇺✈️',faction:FACTIONS.IRAN,tags:['air','stealth','ally_unit','high_value'],supply:85,radarRange:5},'Arleigh Burke Destroyer':{hp:150,attack:60,defense:35,range:4,moves:2,cost:0,icon:'🇺🇸🚢',faction:null,tags:['naval','us_asset','high_value'],supply:100,radarRange:5}
+    };
+
+    const NODES = {
+        tel_aviv: { x: 0.35, y: 0.62, name: 'Tel Aviv', faction: FACTIONS.ISRAEL, income: 300, capital: true, production: true, radarRange: 4, terrain: 'urban', productionQueue: [], disabledTurns: 0 },
+        jerusalem: { x: 0.38, y: 0.67, name: 'Jerusalem', faction: FACTIONS.ISRAEL, income: 150, terrain: 'hills' },
+        haifa: { x: 0.36, y: 0.58, name: 'Haifa Port', faction: FACTIONS.ISRAEL, income: 200, production: true, terrain: 'coastal', naval: true, productionQueue: [], disabledTurns: 0 },
+        negev_base: { x: 0.37, y: 0.73, name: 'Ramon AFB', faction: FACTIONS.ISRAEL, income: 100, production: true, radarRange: 5, terrain: 'desert', productionQueue: [], disabledTurns: 0 },
+        dimona: { x: 0.40, y: 0.70, name: 'Dimona Reactor', faction: FACTIONS.ISRAEL, income: 50, strategic: true, terrain: 'desert' },
+        eilat_port: { x: 0.42, y: 0.78, name: 'Eilat Port', faction: FACTIONS.ISRAEL, income: 180, production: true, terrain: 'coastal', naval: true, productionQueue: [], disabledTurns: 0 },
+        tehran: { x: 0.70, y: 0.45, name: 'Tehran', faction: FACTIONS.IRAN, income: 350, capital: true, production: true, radarRange: 4, terrain: 'urban', productionQueue: [], disabledTurns: 0 },
+        isfahan: { x: 0.69, y: 0.60, name: 'Isfahan AFB', faction: FACTIONS.IRAN, income: 200, production: true, radarRange: 5, terrain: 'plains', productionQueue: [], disabledTurns: 0 },
+        bushehr: { x: 0.66, y: 0.76, name: 'Bushehr Nuclear', faction: FACTIONS.IRAN, income: 100, strategic: true, terrain: 'coastal' },
+        bandar_abbas: { x: 0.78, y: 0.83, name: 'Bandar Abbas', faction: FACTIONS.IRAN, income: 250, production: true, terrain: 'coastal', naval: true, productionQueue: [], disabledTurns: 0 },
+        tabriz: { x: 0.60, y: 0.35, name: 'Tabriz', faction: FACTIONS.IRAN, income: 150, production: true, terrain: 'mountains', productionQueue: [], disabledTurns: 0 },
+        ahvaz: { x: 0.63, y: 0.70, name: 'Ahvaz Oil Hub', faction: FACTIONS.IRAN, income: 250, production: true, terrain: 'plains', productionQueue: [], disabledTurns: 0 },
+        chabahar_port: { x: 0.85, y: 0.90, name: 'Chabahar Port', faction: FACTIONS.IRAN, income: 220, production: true, terrain: 'coastal', naval: true, productionQueue: [], disabledTurns: 0 },
+        damascus: { x: 0.42, y: 0.55, name: 'Damascus', faction: null, income: 80, production: true, terrain: 'urban', productionQueue: [], disabledTurns: 0 },
+        baghdad: { x: 0.55, y: 0.58, name: 'Baghdad', faction: null, income: 100, production: true, terrain: 'urban', productionQueue: [], disabledTurns: 0 },
+        erbil: { x: 0.54, y: 0.43, name: 'Erbil', faction: null, income: 70, terrain: 'plains' },
+        zagros_mountains: { x: 0.62, y: 0.63, name: 'Zagros Mtns', faction: null, income: 0, terrain: 'mountains' },
+        golan_heights: { x: 0.41, y: 0.60, name: 'Golan Heights', faction: null, income: 60, production: true, terrain: 'hills', productionQueue: [], disabledTurns: 0 },
+        amman: { x: 0.44, y: 0.65, name: 'Amman', faction: null, income: 90, terrain: 'urban' },
+        caspian_sea: { x: 0.68, y: 0.30, name: 'Caspian Sea', faction: null, income: 50, naval: true, terrain: 'sea' },
+        strait_hormuz: { x: 0.80, y: 0.87, name: 'Strait of Hormuz', faction: null, income: 0, terrain: 'sea', strategic: true, naval: true },
+        persian_gulf: { x: 0.72, y: 0.85, name: 'Persian Gulf', faction: null, income: 0, terrain: 'sea', naval: true }
+    };
+    
+    const CONNECTIONS = [
+        ['tel_aviv', 'jerusalem'], ['tel_aviv', 'haifa'], ['jerusalem', 'negev_base'], ['jerusalem', 'dimona'], ['negev_base', 'dimona'], ['negev_base', 'eilat_port'],
+        ['haifa', 'damascus'], ['haifa', 'golan_heights'], ['golan_heights', 'damascus'], ['golan_heights', 'jerusalem'],
+        ['damascus', 'baghdad'], ['damascus', 'erbil'], ['damascus', 'amman'], ['amman', 'jerusalem'],
+        ['baghdad', 'erbil'], ['baghdad', 'zagros_mountains'], ['baghdad', 'isfahan'], 
+        ['erbil', 'tabriz'], ['tabriz', 'tehran'], ['tehran', 'isfahan'], ['tehran', 'caspian_sea'],
+        ['isfahan', 'zagros_mountains'], ['isfahan', 'bushehr'], ['isfahan', 'ahvaz'],
+        ['bushehr', 'zagros_mountains'], ['bushehr', 'bandar_abbas'], ['bushehr', 'persian_gulf'], ['bushehr', 'ahvaz'],
+        ['bandar_abbas', 'strait_hormuz'], ['bandar_abbas', 'chabahar_port'], ['bandar_abbas', 'persian_gulf'],
+        ['strait_hormuz', 'persian_gulf'],
+        ['tabriz', 'caspian_sea']
+    ];
+
+    const WEATHER_TYPES = ['clear', 'sandstorm', 'rain', 'fog'];
+    const TERRAIN_EFFECTS = {
+        'mountains': { defenseBonus: 15, moveCost: 2 },
+        'hills': { defenseBonus: 10, moveCost: 1.5 },
+        'desert': { supplyDrain: 20, moveCost: 1 },
+        'urban': { defenseBonus: 10, moveCost: 1 },
+        'coastal': { defenseBonus: 5, moveCost: 1 },
+        'plains': { moveCost: 1 },
+        'sea': { moveCost: 1, navalOnly: true }
+    };
+
+    let gameState = {};
+    let unitIdCounter = 0;
+    let cncSelectedUnitId = null;
+
+    // --- UTILITY FUNCTIONS ---
+    function findPath(startNodeId, endNodeId) {
+        if (!startNodeId || !endNodeId || !gameState.nodes[startNodeId] || !gameState.nodes[endNodeId]) return null;
+        let queue = [{ node: startNodeId, path: [startNodeId] }];
+        let visited = new Set([startNodeId]);
+        
+        while (queue.length > 0) {
+            let { node, path } = queue.shift();
+            if (node === endNodeId) return path;
+            
+            const neighbors = CONNECTIONS.filter(c => c.includes(node)).map(c => c[0] === node ? c[1] : c[0]);
+            for (const neighbor of neighbors) {
+                if (!visited.has(neighbor) && gameState.nodes[neighbor]) {
+                    visited.add(neighbor);
+                    queue.push({ node: neighbor, path: [...path, neighbor] });
+                }
+            }
+        }
+        return null;
+    }
+
+    const createUnit = (type, nodeId) => {
+        const d = UNIT_TYPES[type];
+        if (!d) throw new Error(`Unit type ${type} not found`);
+        const u = { ...d, id: unitIdCounter++, nodeId, currentHp: d.hp, movesLeft: d.moves, hasAttacked: false, revealed: false, typeName: type, supplyLeft: d.supply, paralyzedTurns: 0 };
+        gameState.units.push(u);
+        return u;
+    };
+    const getUnit = id => gameState.units.find(u => u.id === id) || null;
+    const getSelectedUnit = () => gameState.selectedUnitId !== null ? getUnit(gameState.selectedUnitId) : null;
+    const getUnitTypeName = unit => unit ? unit.typeName : 'Unknown Unit';
+    const getDistance = (nodeAId, nodeBId) => {
+        const path = findPath(nodeAId, nodeBId);
+        return path ? path.length - 1 : Infinity;
+    };
+    
+    const getReachableNodes = (unit) => {
+        let reachable = { movable: [], attackable: [] };
+        if (!unit || (unit.movesLeft <= 0 && unit.hasAttacked) || unit.paralyzedTurns > 0) return reachable;
+        const viewingFaction = gameState.playerFaction || gameState.turn;
+
+        Object.keys(gameState.nodes).forEach(nodeId => {
+            const path = findPath(unit.nodeId, nodeId);
+            if (path) {
+                const dist = path.length - 1;
+                if (dist > 0 && gameState.nodes[nodeId]) {
+                    const terrain = gameState.nodes[nodeId].terrain;
+                    const isNavalNode = gameState.nodes[nodeId].naval;
+                    const unitIsNaval = unit.tags.includes('naval');
+                    const canMove = unitIsNaval ? isNavalNode : !TERRAIN_EFFECTS[terrain]?.navalOnly;
+
+                    if (dist <= unit.movesLeft && !unit.hasAttacked && canMove && !gameState.units.some(u => u.nodeId === nodeId)) {
+                        reachable.movable.push(nodeId);
+                    }
+                    if (dist <= unit.range && !unit.hasAttacked) {
+                        const enemyOnNode = gameState.units.find(u => u.nodeId === nodeId && u.faction !== unit.faction);
+                        if (enemyOnNode && isVisible(enemyOnNode, viewingFaction)) {
+                            reachable.attackable.push(nodeId);
+                        }
+                    }
+                }
+            }
+        });
+        return reachable;
+    };
+    
+    const checkWinConditions = () => {
+        const factions = [FACTIONS.ISRAEL, FACTIONS.IRAN];
+        for (const factionName of factions) {
+            const opponentName = factionName === FACTIONS.ISRAEL ? FACTIONS.IRAN : FACTIONS.ISRAEL;
+
+            const factionProductionNodes = Object.values(gameState.nodes).filter(n => n.faction === factionName && n.production).length;
+            const factionUnits = gameState.units.filter(u => u.faction === factionName).length;
+
+            if (factionProductionNodes === 0 && factionUnits === 0) {
+                gameState.winner = opponentName;
+                logEvent(`${factionName} has suffered a total strategic collapse! ${opponentName} is victorious!`, 'system');
+                return;
+            }
+        }
+
+        if (gameState.nuclearDetonation) {
+            gameState.winner = gameState.nuclearDetonation.attackerFaction;
+        }
+    };
+
+    // --- Core Game Flow & State ---
+    function selectGameMode(mode) {
+        let playerFaction = null;
+        if (mode === 'israel') playerFaction = FACTIONS.ISRAEL;
+        if (mode === 'iran') playerFaction = FACTIONS.IRAN;
+        modal.style.opacity = '0';
+        setTimeout(() => modal.style.display = 'none', 300);
+        initGame(playerFaction);
+    }
+
+    async function initGame(playerFaction) {
+        if (animationFrameId) cancelAnimationFrame(animationFrameId);
+        gameLog.innerHTML = '';
+        loadingModal.style.display = 'flex';
+        
+        unitIdCounter = 0;
+        gameState = {
+            playerFaction,
+            israel: new Faction(FACTIONS.ISRAEL, 8000),
+            iran: new Faction(FACTIONS.IRAN, 6000),
+            turn: FACTIONS.ISRAEL,
+            turnNumber: 1,
+            time: new Date(),
+            isNight: false,
+            weather: 'clear',
+            units: [],
+            winner: null,
+            nodes: JSON.parse(JSON.stringify(NODES)),
+            projectiles: [], effects: [],
+            selectedUnitId: null, selectedNodeId: null, isProcessing: true,
+            nuclearDetonation: null,
+            pendingActions: []
+        };
+        
+        updateUI();
+        if(!animationFrameId) gameLoop();
+
+        const lastEventDate = await loadFactualTimeline();
+        promptForUserIntel(lastEventDate);
+    }
+    
+    // --- Drawing & Animation ---
+    function gameLoop(timestamp) {
+        if (!gameState || Object.keys(gameState).length === 0) {
+             animationFrameId = requestAnimationFrame(gameLoop);
+             return;
+        }
+        const deltaTime = timestamp - (lastFrameTime || timestamp);
+        lastFrameTime = timestamp;
+        ctx.clearRect(0, 0, canvas.width, canvas.height);
+
+        drawMapBackground();
+        drawWeatherEffects();
+        drawRadarCoverage();
+        drawConnections();
+        drawNodes();
+        drawUnits();
+        updateAndDrawProjectiles(deltaTime);
+        updateAndDrawEffects(deltaTime);
+        animationFrameId = requestAnimationFrame(gameLoop);
+    }
+
+    function drawMapBackground() {
+        ctx.fillStyle = '#0a2342';
+        ctx.fillRect(0, 0, canvas.width, canvas.height);
+    }
+
+    function drawWeatherEffects() {
+        if (!gameState.weather) return;
+        const weather = gameState.weather;
+        if (weather === 'sandstorm') {
+            ctx.fillStyle = 'rgba(194, 145, 75, 0.3)';
+            ctx.fillRect(0, 0, canvas.width, canvas.height);
+        } else if (weather === 'rain') {
+            ctx.fillStyle = 'rgba(100, 150, 200, 0.2)';
+            ctx.fillRect(0, 0, canvas.width, canvas.height);
+        } else if (weather === 'fog') {
+            ctx.fillStyle = 'rgba(150, 150, 150, 0.4)';
+            ctx.fillRect(0, 0, canvas.width, canvas.height);
+        }
+        if (gameState.isNight) {
+            ctx.fillStyle = 'rgba(0, 0, 20, 0.3)';
+            ctx.fillRect(0, 0, canvas.width, canvas.height);
+        }
+    }
+
+    function drawRadarCoverage() {
+        if (!gameState.nodes) return;
+        const viewingFaction = gameState.playerFaction || gameState.turn;
+        let radarSources = [];
+        
+        Object.entries(gameState.nodes).forEach(([nodeId, node]) => {
+            if (node.faction === viewingFaction && node.radarRange) {
+                radarSources.push({nodeId: nodeId, range: node.radarRange});
+            }
+        });
+        gameState.units.forEach(unit => {
+            if(unit.faction === viewingFaction && unit.radarRange) {
+                radarSources.push({nodeId: unit.nodeId, range: unit.radarRange});
+            }
+        });
+
+        const uniqueSources = Array.from(new Set(radarSources.map(s => s.nodeId)))
+            .map(nodeId => radarSources.filter(s => s.nodeId === nodeId).reduce((max, s) => s.range > max.range ? s : max, {range: 0}));
+
+        ctx.fillStyle = viewingFaction === FACTIONS.ISRAEL ? 'rgba(59, 130, 246, 0.05)' : 'rgba(34, 197, 94, 0.05)';
+        uniqueSources.forEach(source => {
+            const node = gameState.nodes[source.nodeId];
+            if (!node) return;
+            const pt = {x: node.x * canvas.width, y: node.y * canvas.height};
+            const radius = source.range * 80;
+            ctx.beginPath();
+            ctx.arc(pt.x, pt.y, radius, 0, 2 * Math.PI);
+            ctx.fill();
+        });
+    }
+    
+    function isVisible(unit, viewingFaction) {
+        if (!unit || !gameState.nodes[unit.nodeId]) return false;
+        if (unit.faction === viewingFaction || unit.tags.includes('us_asset')) return true;
+        if (godModeActive) return true;
+        if (unit.tags.includes('stealth') && !unit.revealed) return false;
+
+        let visible = false;
+        Object.keys(gameState.nodes).forEach(nodeId => {
+            const node = gameState.nodes[nodeId];
+            if (node.faction === viewingFaction && node.radarRange && getDistance(unit.nodeId, nodeId) <= node.radarRange) visible = true;
+        });
+        if(visible) return true;
+        gameState.units.forEach(radarUnit => {
+            if (radarUnit.faction === viewingFaction && radarUnit.radarRange && getDistance(unit.nodeId, radarUnit.nodeId) <= radarUnit.radarRange) visible = true;
+        });
+        return visible;
+    }
+
+    function drawConnections() {
+        if (!gameState.nodes) return;
+        ctx.strokeStyle = 'rgba(168, 162, 158, 0.4)';
+        ctx.lineWidth = 1;
+        CONNECTIONS.forEach(([from, to]) => {
+            const f = gameState.nodes[from], t = gameState.nodes[to];
+            if (!f || !t) return;
+            const p1 = { x: f.x * canvas.width, y: f.y * canvas.height };
+            const p2 = { x: t.x * canvas.width, y: t.y * canvas.height };
+            ctx.beginPath();
+            ctx.moveTo(p1.x, p1.y);
+            ctx.lineTo(p2.x, p2.y);
+            ctx.stroke();
+        });
+    }
+    
+    function drawNodes() {
+        if (!gameState.nodes) return;
+        const selectedUnit = getSelectedUnit();
+        const reachable = selectedUnit ? getReachableNodes(selectedUnit) : { movable: [], attackable: [] };
+
+        Object.keys(gameState.nodes).forEach(id => {
+            const node = gameState.nodes[id];
+            if (!node) return;
+            const pt = { x: node.x * canvas.width, y: node.y * canvas.height };
+            const radius = node.naval ? 12 : 10;
+            
+            ctx.textAlign = 'center';
+            if(node.production) {
+                 ctx.font = 'bold 11px "Roboto Mono"';
+                 ctx.fillStyle = '#fefce8';
+            } else {
+                 ctx.font = '10px "Roboto Mono"';
+                 ctx.fillStyle = '#e5e7eb';
+            }
+            ctx.fillText(node.name, pt.x, pt.y - radius - 5);
+
+            ctx.beginPath();
+            ctx.arc(pt.x, pt.y, radius, 0, 2 * Math.PI);
+            let baseColor = node.faction === FACTIONS.ISRAEL ? '37, 99, 235' : node.faction === FACTIONS.IRAN ? '22, 163, 74' : '168, 162, 158';
+            ctx.fillStyle = `rgba(${baseColor}, 0.7)`;
+            if(node.disabledTurns > 0) ctx.fillStyle = 'rgba(255, 0, 0, 0.5)';
+            ctx.fill();
+            ctx.strokeStyle = `rgba(${baseColor}, 1)`;
+            ctx.lineWidth = 1.5;
+            if (id === gameState.selectedNodeId || (selectedUnit && selectedUnit.nodeId === id)) {
+                ctx.strokeStyle = '#facc15';
+                ctx.lineWidth = 3;
+            }
+            if (reachable.movable.includes(id)) ctx.strokeStyle = '#4ade80';
+            if (reachable.attackable.includes(id)) ctx.strokeStyle = '#f87171';
+            if (node.capital) ctx.setLineDash([4, 4]);
+            ctx.stroke();
+            ctx.setLineDash([]);
+        });
+    }
+    
+    function drawUnits() {
+        if (!gameState.units) return;
+        const viewingFaction = gameState.playerFaction || gameState.turn;
+        gameState.units.forEach(unit => {
+            if (!isVisible(unit, viewingFaction) || !gameState.nodes[unit.nodeId]) return;
+            const node = gameState.nodes[unit.nodeId];
+            const pt = { x: node.x * canvas.width, y: node.y * canvas.height };
+            const size = 20;
+            ctx.font = `${size}px "Roboto Mono"`;
+            ctx.textAlign = 'center';
+            ctx.textBaseline = 'middle';
+            
+            if (unit.paralyzedTurns > 0) {
+                ctx.shadowColor = '#60a5fa';
+                ctx.shadowBlur = 15;
+            } else {
+                ctx.shadowColor = 'black';
+                ctx.shadowBlur = 5;
+            }
+
+            ctx.fillText(unit.icon, pt.x, pt.y);
+            ctx.shadowBlur = 0;
+            
+            const barWidth = size * 1.2;
+            const healthPercentage = unit.currentHp / unit.hp;
+            
+            ctx.fillStyle = 'rgba(0,0,0,0.5)';
+            ctx.fillRect(pt.x - barWidth / 2, pt.y + size * 0.6, barWidth, 4);
+            ctx.fillStyle = unit.faction === FACTIONS.ISRAEL ? '#3b82f6' : '#22c55e';
+            ctx.fillRect(pt.x - barWidth / 2, pt.y + size * 0.6, barWidth * healthPercentage, 4);
+            
+            if (unit.supplyLeft < unit.supply) {
+                const supplyPercentage = unit.supplyLeft / unit.supply;
+                ctx.fillStyle = '#facc15';
+                ctx.fillRect(pt.x - barWidth / 2, pt.y + size * 0.8, barWidth * supplyPercentage, 2);
+            }
+        });
+    }
+
+    function updateAndDrawProjectiles(deltaTime) {
+        if (!gameState.projectiles) return;
+        gameState.projectiles.forEach((p, index) => {
+            p.progress += (deltaTime / p.duration);
+            if (p.progress >= 1) {
+                gameState.projectiles.splice(index, 1);
+            } else {
+                const arcFactor = Math.sin(p.progress * Math.PI);
+                const currentX = p.startPt.x + (p.endPt.x - p.startPt.x) * p.progress;
+                const currentY = p.startPt.y + (p.endPt.y - p.startPt.y) * p.progress - (arcFactor * 50);
+                ctx.font = '24px "Roboto Mono"';
+                ctx.fillStyle = p.color;
+                ctx.fillText(p.icon, currentX, currentY);
+            }
+        });
+    }
+
+    function updateAndDrawEffects(deltaTime) {
+        if (!gameState.effects) return;
+        gameState.effects.forEach((effect, index) => {
+            if (effect.type === 'explosion') {
+                effect.particles.forEach(p => {
+                    p.x += p.vx * (deltaTime / 16);
+                    p.y += p.vy * (deltaTime / 16);
+                    p.life -= deltaTime;
+                    p.alpha = Math.max(0, p.life / p.totalLife);
+                    ctx.fillStyle = `rgba(${p.color}, ${p.alpha})`;
+                    ctx.beginPath();
+                    ctx.arc(p.x, p.y, p.size, 0, Math.PI * 2);
+                    ctx.fill();
+                });
+                effect.particles = effect.particles.filter(p => p.life > 0);
+                if (effect.particles.length === 0) {
+                    gameState.effects.splice(index, 1);
+                }
+            } else if (effect.type === 'emp' || effect.type === 'cyber') { // Added cyber effect
+                effect.duration -= deltaTime;
+                 if(effect.duration <= 0){
+                    gameState.effects.splice(index, 1);
+                    return;
+                }
+                ctx.strokeStyle = `rgba(${effect.color}, ${0.5 * (effect.duration / effect.totalDuration)})`;
+                ctx.lineWidth = 4;
+                ctx.beginPath();
+                const radius = (1 - (effect.duration / effect.totalDuration)) * effect.radius;
+                ctx.arc(effect.x, effect.y, radius, 0, Math.PI * 2);
+                ctx.stroke();
+                 ctx.lineWidth = 1;
+            }
+        });
+    }
+
+    function createExplosion(x, y, options = {}) {
+        const { color1 = '255, 191, 0', color2 = '255, 94, 0', particleCount = 50 } = options;
+        let particles = [];
+        for (let i = 0; i < particleCount; i++) {
+            const angle = Math.random() * Math.PI * 2;
+            const speed = Math.random() * 5 + 2;
+            particles.push({
+                x, y,
+                vx: Math.cos(angle) * speed, vy: Math.sin(angle) * speed,
+                life: Math.random() * 500 + 500, totalLife: 1000,
+                size: Math.random() * 3 + 2,
+                color: i % 2 === 0 ? color1 : color2,
+            });
+        }
+        gameState.effects.push({ type: 'explosion', particles });
+    }
+
+    function createAreaEffect(type, x, y, options = {}) {
+        const { radius = 100, duration = 1000, color = '96, 165, 250' } = options;
+        gameState.effects.push({ type, x, y, radius, duration, totalDuration: duration, color });
+    }
+    
+    // --- UI Updates ---
+    function updateUI() {
+        if (!gameState || !gameState.time) return;
+
+        updateWarProgressBar(); 
+
+        if (gameState.winner) {
+            turnIndicator.innerHTML = `${gameState.winner} has achieved victory!`;
+            turnIndicator.className = `text-center p-4 rounded-lg font-bold text-2xl ${gameState.winner === FACTIONS.ISRAEL ? 'bg-blue-800 text-blue-100' : 'bg-green-800 text-green-100'}`;
+            endTurnBtn.disabled = true;
+            commandCenterBtn.disabled = true;
+            diplomacyBtn.disabled = true;
+            return;
+        }
+
+        timeDisplay.textContent = `${gameState.time.toLocaleString('en-GB', { day: 'numeric', month: 'short', year: 'numeric'})} | Weather: ${gameState.weather}`;
+        const isPlayerTurn = gameState.turn === gameState.playerFaction;
+        endTurnBtn.disabled = !isPlayerTurn || gameState.isProcessing;
+        commandCenterBtn.disabled = !isPlayerTurn || gameState.isProcessing;
+        diplomacyBtn.disabled = !isPlayerTurn || gameState.isProcessing;
+        turnIndicator.innerHTML = `Turn ${gameState.turnNumber}: <span class="${gameState.turn === FACTIONS.ISRAEL ? 'faction-israel' : 'faction-iran'}">${gameState.turn}'s Move</span>`;
+        
+        updateInfoPanel();
+        updateActionPanel();
+    }
+    
+    function updateWarProgressBar() {
+        if (!gameState.israel || !gameState.iran) return;
+        
+        const calculatePower = (factionName) => {
+            const faction = gameState[factionName.toLowerCase()];
+            const units = gameState.units.filter(u => u.faction === factionName);
+            const nodes = Object.values(gameState.nodes).filter(n => n.faction === factionName);
+
+            let score = 0;
+            score += units.reduce((sum, u) => sum + u.currentHp + u.attack, 0) * 2;
+            score += faction.budget * 0.1;
+            score += nodes.reduce((sum, n) => sum + n.income, 0) * 5;
+            score += nodes.length * 200;
+            score += faction.morale * 10;
+            score += (faction.nukeProg + faction.empProg) * 2;
+
+            return score > 0 ? score : 1;
+        };
+
+        const israelPower = calculatePower(FACTIONS.ISRAEL);
+        const iranPower = calculatePower(FACTIONS.IRAN);
+        const totalPower = israelPower + iranPower;
+        
+        const israelPercentage = (israelPower / totalPower) * 100;
+        const iranPercentage = (iranPower / totalPower) * 100;
+
+        israelProgress.style.width = `${israelPercentage}%`;
+        israelProgress.textContent = `${Math.round(israelPercentage)}%`;
+        iranProgress.style.width = `${iranPercentage}%`;
+        iranProgress.textContent = `${Math.round(iranPercentage)}%`;
+    }
+
+
+    function updateInfoPanel() {
+        if (!gameState || !gameState.nodes) return;
+        let infoHtml = '';
+        const selectedUnit = getSelectedUnit();
+        const selectedNode = gameState.selectedNodeId ? gameState.nodes[gameState.selectedNodeId] : null;
+
+        if (selectedUnit) {
+             infoHtml = `<h3 class="font-bold text-lg ${selectedUnit.faction === FACTIONS.ISRAEL ? 'faction-israel' : 'faction-iran'}">${selectedUnit.icon} ${getUnitTypeName(selectedUnit)}</h3>
+                      <p>HP: ${selectedUnit.currentHp}/${selectedUnit.hp} | Supply: ${selectedUnit.supplyLeft}/${selectedUnit.supply}</p>
+                      <p>Attack: ${selectedUnit.attack} | Defense: ${selectedUnit.defense}</p>
+                      <p>Range: ${selectedUnit.range} | Moves Left: ${selectedUnit.movesLeft}</p>
+                      <p>Status: <span class="${selectedUnit.paralyzedTurns > 0 ? 'text-cyan-400' : (selectedUnit.hasAttacked ? 'text-red-500' : 'text-green-500')}">${selectedUnit.paralyzedTurns > 0 ? `Paralyzed (${selectedUnit.paralyzedTurns})` : (selectedUnit.hasAttacked ? 'Acted' : 'Ready')}</span></p>`;
+        } else if (selectedNode) {
+            infoHtml = `<h3 class="font-bold text-lg">${selectedNode.name}</h3>`;
+            infoHtml += `<p>Controlled by: <span class="${selectedNode.faction === FACTIONS.ISRAEL ? 'faction-israel' : selectedNode.faction === FACTIONS.IRAN ? 'faction-iran' : 'text-stone-400'}">${selectedNode.faction || 'Neutral'}</span></p>`;
+            infoHtml += `<p>Income: ${selectedNode.income}M</p>`;
+            if(selectedNode.production) {
+                const disabledText = selectedNode.disabledTurns > 0 ? ` <span class="text-red-500">(DISABLED: ${selectedNode.disabledTurns} turns)</span>` : '';
+                infoHtml += `<p class="mt-2 font-bold">Production Queue:${disabledText}</p>`;
+                if (selectedNode.productionQueue && selectedNode.productionQueue.length > 0) {
+                     infoHtml += `<div class="text-sm space-y-1">${selectedNode.productionQueue.map(typeName => `<div>${UNIT_TYPES[typeName].icon} ${typeName}</div>`).join('')}</div>`;
+                } else {
+                     infoHtml += `<p class="text-sm text-stone-400">Queue is empty.</p>`
+                }
+            }
+            const unitsOnNode = gameState.units.filter(u => u.nodeId === gameState.selectedNodeId && isVisible(u, gameState.playerFaction || gameState.turn));
+            if (unitsOnNode.length) {
+                infoHtml += `<p class="mt-2 font-bold">Units:</p><div class="flex justify-center items-center space-x-2">${unitsOnNode.map(u => `<span class="text-2xl">${u.icon}</span>`).join('')}</div>`;
+            }
+        } else {
+             infoHtml = `<p class="faction-israel">Israel Budget: ${gameState.israel.budget}M | Morale: ${gameState.israel.morale}</p>
+                       <p class="faction-iran mt-2">Iran Budget: ${gameState.iran.budget}M | Morale: ${gameState.iran.morale}</p>`;
+        }
+        infoPanel.innerHTML = infoHtml;
+    }
+
+    function updateActionPanel() {
+        if (!gameState.nodes) return;
+        actionPanel.innerHTML = '';
+        const node = gameState.selectedNodeId ? gameState.nodes[gameState.selectedNodeId] : null;
+        const unit = getSelectedUnit();
+
+        if (gameState.turn !== gameState.playerFaction) {
+            actionPanel.innerHTML = '<p class="text-stone-500 text-center">Awaiting opponent turn...</p>';
+            return;
+        }
+
+        if (unit && unit.faction === gameState.turn) {
+             const reachable = getReachableNodes(unit);
+             actionPanel.innerHTML = '';
+             if (unit.paralyzedTurns > 0) {
+                  actionPanel.innerHTML = '<p class="text-cyan-400 text-center">Unit is paralyzed and cannot act.</p>';
+                  return;
+             }
+
+            if (reachable.movable.length > 0 && !unit.hasAttacked) {
+                 actionPanel.innerHTML += '<h4 class="font-bold text-center my-2 text-green-400">Movement Options</h4>';
+                reachable.movable.forEach(targetNodeId => {
+                    const btn = document.createElement('button');
+                    btn.className = 'w-full text-white font-bold py-3 px-4 rounded-lg transition-all duration-300 shadow-lg flex items-center justify-center gap-2 disabled:bg-stone-700 disabled:cursor-not-allowed bg-green-700 hover:bg-green-600 my-1';
+                    btn.textContent = `Move to ${gameState.nodes[targetNodeId].name}`;
+                    btn.addEventListener('click', () => moveUnit(unit, targetNodeId));
+                    actionPanel.appendChild(btn);
+                });
+            }
+            if (reachable.attackable.length > 0 && !unit.hasAttacked) {
+                actionPanel.innerHTML += '<h4 class="font-bold text-center my-2 text-red-400">Attack Options</h4>';
+                reachable.attackable.forEach(targetNodeId => {
+                    const targetUnit = gameState.units.find(u => u.nodeId === targetNodeId && u.faction !== unit.faction);
+                    if (targetUnit) {
+                        const btn = document.createElement('button');
+                        btn.className = 'w-full text-white font-bold py-3 px-4 rounded-lg transition-all duration-300 shadow-lg flex items-center justify-center gap-2 disabled:bg-stone-700 disabled:cursor-not-allowed bg-red-600 hover:bg-red-500 my-1';
+                        btn.textContent = `Attack ${getUnitTypeName(targetUnit)} at ${gameState.nodes[targetNodeId].name}`;
+                        btn.addEventListener('click', () => performAttack(unit, targetUnit));
+                        actionPanel.appendChild(btn);
+                    }
+                });
+            }
+             if(actionPanel.children.length === 0) actionPanel.innerHTML = '<p class="text-stone-500 text-center">Unit has no available actions.</p>';
+        } else if (node && node.production && node.faction === gameState.turn) {
+            actionPanel.innerHTML = '<h4 class="font-bold text-center mb-2">Produce Units</h4>';
+            if (node.disabledTurns > 0) {
+                actionPanel.innerHTML += `<p class="text-red-500 text-center">Production is disabled by cyber attack for ${node.disabledTurns} more turns.</p>`;
+            } else {
+                Object.keys(UNIT_TYPES).forEach(typeName => {
+                    const unitInfo = UNIT_TYPES[typeName];
+                    const isNavalUnit = unitInfo.tags.includes('naval');
+                    const canProduceHere = isNavalUnit ? node.naval === true : true;
+
+                    if (unitInfo.faction === gameState.turn && !unitInfo.tags.includes('ally_unit') && !unitInfo.tags.includes('nuke') && canProduceHere) {
+                        const btn = document.createElement('button');
+                        btn.className = `w-full text-left p-2 rounded bg-stone-700 hover:bg-stone-600`;
+                        btn.innerHTML = `<div class="flex justify-between items-center"><span>${unitInfo.icon} ${typeName}</span><span class="font-bold">${unitInfo.cost}M</span></div>`;
+                        btn.disabled = gameState.isProcessing;
+                        btn.addEventListener('click', () => queueProduction(typeName, gameState.selectedNodeId));
+                        actionPanel.appendChild(btn);
+                    }
+                });
+            }
+        } else {
+             actionPanel.innerHTML = '<p class="text-stone-500 text-center">Select your unit or a production node for actions.</p>';
+        }
+    }
+    
+    function logEvent(message, type, time = null) {
+        const entry = document.createElement('div');
+         entry.className = 'log-entry';
+         let typeClass = '';
+         switch (type) {
+             case 'system': typeClass = 'text-yellow-400 font-bold'; break;
+             case FACTIONS.ISRAEL: typeClass = 'faction-israel'; break;
+             case FACTIONS.IRAN: typeClass = 'faction-iran'; break;
+             case 'combat': typeClass = 'text-red-400'; break;
+             case 'special': typeClass = 'text-cyan-400'; break;
+             default: typeClass = 'text-stone-400'; break;
+         }
+         const timeToLog = time || gameState.time;
+         const timeStr = timeToLog.toLocaleDateString('en-GB', { year: 'numeric', month: 'short', day: 'numeric' });
+         entry.innerHTML = `<span class="${typeClass}">[${timeStr}] ${message}</span>`;
+         gameLog.prepend(entry);
+         if (gameLog.children.length > 200) gameLog.removeChild(gameLog.lastChild);
+    }
+    
+    function saveUndoState() {
+        if (!gameState.playerFaction) return; // Don't save for AI vs AI
+        previousGameState = JSON.stringify(gameState);
+    }
+
+    // --- Game Logic & Actions ---
+    async function endTurn() {
+        gameState.isProcessing = true;
+        gameState.time.setDate(gameState.time.getDate() + 1); // Increment by one day per turn
+        gameState.isNight = false; // Simplified for day-based turns
+        
+        const factionOfTurn = gameState.turn;
+        
+        Object.values(gameState.nodes).forEach(node => {
+            if (node.disabledTurns > 0) {
+                node.disabledTurns--;
+            }
+            if (node.faction === factionOfTurn && node.productionQueue && node.productionQueue.length > 0 && node.disabledTurns === 0) {
+                const isOccupied = gameState.units.some(u => u.nodeId === Object.keys(gameState.nodes).find(key => gameState.nodes[key] === node));
+                if (!isOccupied) {
+                    const unitTypeName = node.productionQueue.shift();
+                    createUnit(unitTypeName, Object.keys(gameState.nodes).find(key => gameState.nodes[key] === node));
+                    logEvent(`${UNIT_TYPES[unitTypeName].icon} ${unitTypeName} has been deployed at ${node.name}.`, factionOfTurn, gameState.time);
+                } else {
+                     logEvent(`Production at ${node.name} blocked by a present unit.`, factionOfTurn, gameState.time);
+                }
+            }
+        });
+        
+        const currentFactionData = gameState[factionOfTurn.toLowerCase()];
+        Object.keys(currentFactionData).forEach(key => {
+            if (key.endsWith('Cooldown') && currentFactionData[key] > 0) {
+                currentFactionData[key]--;
+            }
+        });
+
+        gameState.units.forEach(u => {
+            if (u.paralyzedTurns > 0) u.paralyzedTurns--;
+            if (u.faction === factionOfTurn) {
+                const terrain = gameState.nodes[u.nodeId]?.terrain;
+                const supplyDrain = TERRAIN_EFFECTS[terrain]?.supplyDrain || 10;
+                u.supplyLeft = Math.max(0, u.supplyLeft - supplyDrain);
+                if (u.supplyLeft <= 0 && u.currentHp > 0) {
+                    u.currentHp -= 10;
+                    logEvent(`${getUnitTypeName(u)} at ${gameState.nodes[u.nodeId].name} suffers attrition damage.`, 'info', gameState.time);
+                }
+            }
+        });
+        gameState.units = gameState.units.filter(u => u.currentHp > 0);
+
+        await checkAlliedIntervention(factionOfTurn);
+
+        let income = 0;
+        Object.values(gameState.nodes).forEach(node => {
+            if (node.faction === factionOfTurn) income += node.income;
+        });
+        currentFactionData.budget += income;
+        logEvent(`${factionOfTurn} gains ${income}M in resources.`, 'info', gameState.time);
+
+        gameState.turn = factionOfTurn === FACTIONS.ISRAEL ? FACTIONS.IRAN : FACTIONS.ISRAEL;
+        if (gameState.turn === FACTIONS.ISRAEL) {
+            gameState.turnNumber++;
+            gameState.weather = WEATHER_TYPES[Math.floor(Math.random() * WEATHER_TYPES.length)];
+            logEvent(`Weather for the day is ${gameState.weather}.`, 'info', gameState.time);
+        }
+        
+        gameState.units.forEach(unit => {
+            if (unit.faction === gameState.turn) {
+                unit.movesLeft = UNIT_TYPES[unit.typeName].moves;
+                unit.hasAttacked = false;
+            }
+        });
+        
+        gameState.selectedUnitId = null;
+        gameState.selectedNodeId = null;
+        checkWinConditions();
+        updateUI();
+    }
+    
+    async function performAttack(attacker, defender) {
+        if (!attacker || !defender || attacker.hasAttacked || attacker.paralyzedTurns > 0) return;
+        saveUndoState();
+        
+        attacker.hasAttacked = true;
+        attacker.movesLeft = 0;
+        attacker.revealed = true;
+        
+        const startNode = gameState.nodes[attacker.nodeId];
+        const endNode = gameState.nodes[defender.nodeId];
+        
+        gameState.projectiles.push({
+            startPt: { x: startNode.x * canvas.width, y: startNode.y * canvas.height },
+            endPt: { x: endNode.x * canvas.width, y: endNode.y * canvas.height },
+            progress: 0, duration: 1000, icon: attacker.icon,
+            color: attacker.faction === FACTIONS.ISRAEL ? '#60a5fa' : '#4ade80',
+        });
+        
+        await sleep(1000);
+        
+        let damage = Math.max(0, attacker.attack - defender.defense);
+        if (godModeActive && defender.faction === gameState.playerFaction) {
+            damage = 0;
+            logEvent("GOD MODE: Incoming friendly fire negated.", "special");
+        }
+        defender.currentHp = Math.max(0, defender.currentHp - damage);
+
+        logEvent(`${getUnitTypeName(attacker)} attacks ${getUnitTypeName(defender)} at ${endNode.name} for ${damage} damage!`, 'combat');
+        createExplosion(endNode.x * canvas.width, endNode.y * canvas.height);
+
+        if (defender.currentHp <= 0) {
+            logEvent(`${getUnitTypeName(defender)} has been destroyed!`, 'combat');
+            gameState.units = gameState.units.filter(u => u.id !== defender.id);
+        }
+        updateUI();
+    }
+    
+    async function moveUnit(unit, targetNodeId) {
+        if (!unit || unit.hasAttacked || unit.movesLeft <= 0 || unit.paralyzedTurns > 0) return;
+        saveUndoState();
+        const path = findPath(unit.nodeId, targetNodeId);
+        if (!path || path.length - 1 > unit.movesLeft) return;
+
+        unit.nodeId = targetNodeId;
+        unit.movesLeft -= (path.length - 1);
+        logEvent(`${getUnitTypeName(unit)} moves to ${gameState.nodes[targetNodeId].name}.`, unit.faction);
+
+        if (!gameState.nodes[targetNodeId].faction) {
+            gameState.nodes[targetNodeId].faction = unit.faction;
+            logEvent(`${unit.faction} captures ${gameState.nodes[targetNodeId].name}!`, unit.faction);
+        }
+        updateUI();
+    }
+    
+    function queueProduction(typeName, nodeId) {
+        const node = gameState.nodes[nodeId];
+        if (node.disabledTurns > 0) {
+            logEvent(`Production at ${node.name} is disabled by cyber attack.`, 'system');
+            return;
+        }
+
+        saveUndoState();
+        const factionState = gameState[UNIT_TYPES[typeName].faction.toLowerCase()];
+        const cost = UNIT_TYPES[typeName].cost;
+        if(factionState.budget < cost){
+            logEvent(`Insufficient funds to produce ${typeName}.`, 'system');
+            return;
+        }
+        
+        if (node.productionQueue.length >= 5) {
+             logEvent(`Production queue at ${node.name} is full.`, 'system');
+             return;
+        }
+
+        factionState.budget -= cost;
+        node.productionQueue.push(typeName);
+        logEvent(`${UNIT_TYPES[typeName].icon} ${typeName} queued for production at ${node.name}.`, 'info');
+        updateUI();
+    }
+    
+    // --- C&C AND STRATEGIC ACTIONS ---
+    function openCommandCenter() {
+        const faction = gameState.playerFaction;
+        if (!faction) return;
+
+        const isIsrael = faction === FACTIONS.ISRAEL;
+        const cncContainer = document.getElementById('cnc-container');
+        const cncTitle = document.getElementById('cnc-title');
+        const cncTabs = document.getElementById('cnc-tabs');
+        const cncContent = document.getElementById('cnc-content');
+        
+        cncContainer.style.borderColor = isIsrael ? '#60a5fa' : '#4ade80';
+        cncTitle.textContent = isIsrael ? 'The Kirya, Tel Aviv' : 'IRGC Central Command';
+        cncTitle.className = `text-2xl sm:text-4xl font-bold ${isIsrael ? 'faction-israel' : 'faction-iran'}`;
+        
+        cncTabs.innerHTML = '';
+        cncContent.innerHTML = '';
+        cncSelectedUnitId = null;
+
+        const tabs = ['Sit-Rep', 'Operations', 'Production', 'Strategic Arsenal', 'R&D', 'Intelligence'];
+        tabs.forEach((tabName, index) => {
+            const tabId = tabName.toLowerCase().replace('&', 'n').replace(/\s+/g, '-');
+            const tabButton = document.createElement('button');
+            tabButton.id = `tab-${tabId}`;
+            tabButton.className = `px-4 py-2 text-lg font-semibold cursor-pointer border-b-2 transition-all duration-300 whitespace-nowrap bg-stone-800/50 hover:bg-stone-700/70 rounded-t-md cnc-tab-button ${isIsrael ? 'faction-israel' : 'faction-iran'}`;
+            tabButton.textContent = tabName;
+            
+            const contentPanel = document.createElement('div');
+            contentPanel.id = `content-${tabId}`;
+            contentPanel.className = 'cnc-tab-content';
+            
+            if (index === 0) {
+                tabButton.classList.add('active');
+                contentPanel.classList.add('active');
+            }
+
+            cncTabs.appendChild(tabButton);
+            cncContent.appendChild(contentPanel);
+
+            tabButton.addEventListener('click', () => {
+                document.querySelectorAll('.cnc-tab-button').forEach(t => t.classList.remove('active'));
+                document.querySelectorAll('.cnc-tab-content').forEach(c => c.classList.remove('active'));
+                tabButton.classList.add('active');
+                contentPanel.classList.add('active');
+                if(tabId === 'intelligence') populateIntelligenceTab();
+            });
+        });
+        
+        populateSitRepTab();
+        populateOperationsTab();
+        populateProductionTab();
+        populateStrategicTab();
+        populateRnDTab();
+        populateIntelligenceTab();
+
+        commandCenterModal.style.display = 'flex';
+        setTimeout(() => commandCenterModal.style.opacity = '1', 10);
+    }
+
+    function calculateThreats(faction) {
+        const keyAssets = Object.entries(gameState.nodes).filter(([id, n]) => n.faction === faction && (n.capital || n.strategic || n.production));
+        const enemyUnits = gameState.units.filter(u => u.faction !== faction && isVisible(u, faction));
+        const threats = [];
+
+        for(const unit of enemyUnits) {
+            for(const [nodeId, node] of keyAssets) {
+                const distance = getDistance(unit.nodeId, nodeId);
+                if (distance < Infinity) {
+                    const turnsToReach = Math.ceil(distance / (unit.moves || 1));
+                    let level = 'Low';
+                    if (turnsToReach <= 1) level = 'Imminent';
+                    else if (turnsToReach <= 3) level = 'Potential';
+
+                    if (level !== 'Low' || unit.tags.includes('strategic_striker')) {
+                         threats.push({
+                            sourceUnit: getUnitTypeName(unit),
+                            sourceNode: gameState.nodes[unit.nodeId].name,
+                            targetNode: node.name,
+                            distance: distance,
+                            threatLevel: level
+                        });
+                    }
+                }
+            }
+        }
+        return threats.sort((a, b) => {
+            const levels = { 'Imminent': 3, 'Potential': 2, 'Low': 1 };
+            return levels[b.threatLevel] - levels[a.threatLevel];
+        });
+    }
+
+    function populateSitRepTab() {
+        const faction = gameState.playerFaction;
+        const factionState = faction === FACTIONS.ISRAEL ? gameState.israel : gameState.iran;
+        const sitRepContent = document.getElementById('content-sit-rep');
+
+        const controlledNodes = Object.values(gameState.nodes).filter(n => n.faction === faction);
+        const totalIncome = controlledNodes.reduce((sum, node) => sum + node.income, 0);
+        
+        const threats = calculateThreats(faction);
+        
+        const nukeTitle = faction === FACTIONS.ISRAEL ? "Deterrent Readiness" : "Nuclear Program";
+        const empTitle = "EMP Program";
+
+        sitRepContent.innerHTML = `
+            <div class="grid grid-cols-1 md:grid-cols-3 gap-4">
+                <div>
+                    <h3 class="font-bold text-lg">National Resources</h3>
+                    <p>Budget: <span class="font-bold text-green-400">${factionState.budget}M</span></p>
+                    <p>Morale: <span class="font-bold text-blue-400">${factionState.morale}%</span></p>
+                    <p>Logistics: <span class="font-bold text-yellow-400">${factionState.logistics}%</span></p>
+                </div>
+                <div>
+                    <h3 class="font-bold text-lg">Territory Control</h3>
+                    <p>Total Income/Turn: <span class="font-bold text-green-400">${totalIncome}M</span></p>
+                    <div class="text-sm h-32 overflow-y-auto mt-2 space-y-1 pr-2">${controlledNodes.map(n => `<div class="${n.production ? 'font-bold' : ''}">${n.name} ${n.production ? '🏭' : ''}</div>`).join('') || '<p>No territory held.</p>'}</div>
+                </div>
+                <div class="md:col-span-3 lg:col-span-1">
+                    <h3 class="font-bold text-lg">Dynamic Threat Matrix</h3>
+                    <div class="text-sm h-40 overflow-y-auto mt-2 space-y-1 pr-2">
+                    ${threats.length > 0 ? threats.map(t => `<div class="log-entry threat-${t.threatLevel.toLowerCase()}"><strong>${t.threatLevel}:</strong> ${t.sourceUnit} at ${t.sourceNode} targeting ${t.targetNode} (Dist: ${t.distance})</div>`).join('') : '<p class="text-stone-500">No immediate threats detected.</p>'}
+                    </div>
+                </div>
+                <div class="md:col-span-3">
+                    <h3 class="font-bold text-lg mt-4">Strategic Development</h3>
+                    <div class="grid grid-cols-1 sm:grid-cols-2 gap-4 mt-2">
+                        <div>
+                            <label class="text-sm font-bold">${nukeTitle}</label>
+                            <div class="w-full bg-gray-700 rounded-full h-4 progress-bar-container">
+                                <div class="h-4 rounded-full transition-all duration-500 progress-bar ${factionState.nukeReady ? 'bg-green-500' : 'bg-yellow-400'}" style="width: ${factionState.nukeProg}%;"></div>
+                            </div>
+                        </div>
+                        <div>
+                            <label class="text-sm font-bold">${empTitle}</label>
+                            <div class="w-full bg-gray-700 rounded-full h-4 progress-bar-container">
+                                <div class="h-4 rounded-full transition-all duration-500 progress-bar ${factionState.empReady ? 'bg-green-500' : 'bg-cyan-400'}" style="width: ${factionState.empProg}%;"></div>
+                            </div>
+                        </div>
+                    </div>
+                </div>
+            </div>`;
+    }
+
+    function populateOperationsTab() {
+        const opsContent = document.getElementById('content-operations');
+        opsContent.innerHTML = `
+            <div class="grid grid-cols-1 md:grid-cols-3 gap-4 h-full">
+                <div class="md:col-span-1 h-full flex flex-col">
+                    <h3 class="font-bold text-lg mb-2">Unit Roster</h3>
+                    <div id="cnc-unit-roster" class="flex-grow overflow-y-auto space-y-1 pr-2 bg-black/20 p-2 rounded"></div>
+                </div>
+                <div id="cnc-command-panel" class="md:col-span-2 h-full overflow-y-auto p-2">
+                    <p class="text-stone-400 h-full flex items-center justify-center">Select a unit from the roster to issue commands.</p>
+                </div>
+            </div>`;
+        
+        const roster = document.getElementById('cnc-unit-roster');
+        const friendlyUnits = gameState.units.filter(u => u.faction === gameState.playerFaction).sort((a,b) => a.typeName.localeCompare(b.typeName));
+        
+        if (friendlyUnits.length === 0) {
+            roster.innerHTML = '<p class="text-stone-500">No units deployed.</p>';
+            return;
+        }
+
+        friendlyUnits.forEach(unit => {
+            const unitEl = document.createElement('div');
+            unitEl.id = `cnc-unit-${unit.id}`;
+            unitEl.className = 'p-2 rounded-md transition-colors duration-200 cursor-pointer cnc-list-item';
+            unitEl.innerHTML = `
+                <div class="flex justify-between items-center">
+                    <span>${unit.icon} ${getUnitTypeName(unit)}</span>
+                    <span class="text-xs">${gameState.nodes[unit.nodeId].name}</span>
+                </div>
+                <div class="text-xs text-stone-400">HP: ${unit.currentHp}/${unit.hp}</div>`;
+            unitEl.addEventListener('click', () => selectCncUnit(unit));
+            roster.appendChild(unitEl);
+        });
+    }
+    
+    function selectCncUnit(unit) {
+        cncSelectedUnitId = unit.id;
+        document.querySelectorAll('.cnc-list-item').forEach(el => el.classList.remove('selected'));
+        document.getElementById(`cnc-unit-${unit.id}`).classList.add('selected');
+        
+        const commandPanel = document.getElementById('cnc-command-panel');
+        const reachable = getReachableNodes(unit);
+
+        const moveContainer = document.createElement('div');
+        if (reachable.movable.length > 0 && !unit.hasAttacked) {
+            reachable.movable.forEach(nodeId => {
+                const btn = document.createElement('button');
+                btn.className = 'w-full text-white font-bold py-3 px-4 rounded-lg transition-all duration-300 shadow-lg flex items-center justify-center gap-2 disabled:bg-stone-700 disabled:cursor-not-allowed bg-green-700 hover:bg-green-600 my-1 text-sm py-2';
+                btn.textContent = `Move to ${gameState.nodes[nodeId].name}`;
+                btn.addEventListener('click', async () => {
+                    await moveUnit(unit, nodeId);
+                    closeCommandCenter();
+                });
+                moveContainer.appendChild(btn);
+            });
+        } else {
+            moveContainer.innerHTML = '<p class="text-stone-500 text-center">No valid moves.</p>';
+        }
+
+        const attackContainer = document.createElement('div');
+        if (reachable.attackable.length > 0 && !unit.hasAttacked) {
+            reachable.attackable.forEach(nodeId => {
+                const targetUnit = gameState.units.find(u => u.nodeId === nodeId && u.faction !== unit.faction);
+                if(targetUnit) {
+                    const btn = document.createElement('button');
+                    btn.className = 'w-full text-white font-bold py-3 px-4 rounded-lg transition-all duration-300 shadow-lg flex items-center justify-center gap-2 disabled:bg-stone-700 disabled:cursor-not-allowed bg-red-600 hover:bg-red-500 my-1 text-sm py-2';
+                    btn.textContent = `Attack ${targetUnit.typeName} at ${gameState.nodes[nodeId].name}`;
+                    btn.addEventListener('click', async () => {
+                        await performAttack(unit, targetUnit);
+                        closeCommandCenter();
+                    });
+                    attackContainer.appendChild(btn);
+                }
+            });
+             if (attackContainer.children.length === 0) {
+                 attackContainer.innerHTML = '<p class="text-stone-500 text-center">No targets in range.</p>';
+             }
+        } else {
+            attackContainer.innerHTML = '<p class="text-stone-500 text-center">No targets in range.</p>';
+        }
+
+        commandPanel.innerHTML = `
+            <h3 class="font-bold text-lg">${unit.icon} ${getUnitTypeName(unit)}</h3>
+            <p>HP: ${unit.currentHp}/${unit.hp} | Supply: ${unit.supplyLeft}/${unit.supply}</p>
+            <p>Attack: ${unit.attack} | Defense: ${unit.defense}</p>
+            <p>Range: ${unit.range} | Moves Left: ${unit.movesLeft}</p>
+            <p>Status: <span class="font-bold ${unit.paralyzedTurns > 0 ? 'text-cyan-400' : (unit.hasAttacked ? 'text-red-500' : 'text-green-500')}">${unit.paralyzedTurns > 0 ? `Paralyzed (${unit.paralyzedTurns})` : (unit.hasAttacked ? 'Acted' : 'Ready')}</span></p>
+            <div class="grid grid-cols-1 md:grid-cols-2 gap-4 mt-4">
+                <div><h4 class="font-bold text-center mb-2 text-green-400">Movement Orders</h4><div class="space-y-1" id="move-orders"></div></div>
+                <div><h4 class="font-bold text-center mb-2 text-red-400">Attack Orders</h4><div class="space-y-1" id="attack-orders"></div></div>
+            </div>`;
+        document.getElementById('move-orders').appendChild(moveContainer);
+        document.getElementById('attack-orders').appendChild(attackContainer);
+    }
+
+    function populateProductionTab() {
+        const prodContent = document.getElementById('content-production');
+        prodContent.innerHTML = '';
+        const faction = gameState.playerFaction;
+        
+        const productionNodes = Object.entries(gameState.nodes).filter(([id, n]) => n.faction === faction && n.production);
+
+        if (productionNodes.length === 0) {
+            prodContent.innerHTML = '<p class="text-stone-400">No available production facilities. Capture or clear nodes with production capabilities.</p>';
+            return;
+        }
+        
+        prodContent.innerHTML = `<p class="mb-4 text-stone-300">Select a unit to add to a facility's production queue. One unit is built per turn.</p>`;
+        const grid = document.createElement('div');
+        grid.className = 'grid grid-cols-1 md:grid-cols-2 lg:grid-cols-3 gap-4';
+
+        productionNodes.forEach(([nodeId, node]) => {
+            const nodeContainer = document.createElement('div');
+            nodeContainer.className = 'bg-black/20 p-3 rounded flex flex-col';
+            nodeContainer.innerHTML = `<h4 class="font-bold text-lg border-b border-stone-600 pb-1 mb-2">${node.name}</h4>`;
+            
+            const queueDiv = document.createElement('div');
+            queueDiv.innerHTML = `<h5 class="font-semibold text-sm mb-1">Queue (${node.productionQueue.length}/5)</h5>`;
+            const queueList = document.createElement('div');
+            queueList.className = "bg-black/20 p-1 rounded min-h-[80px] mb-2 text-xs space-y-1";
+            if (node.productionQueue.length > 0) {
+                node.productionQueue.forEach(typeName => {
+                    queueList.innerHTML += `<div>- ${UNIT_TYPES[typeName].icon} ${typeName}</div>`;
+                });
+            } else {
+                 queueList.innerHTML = `<p class="text-stone-500">Empty</p>`;
+            }
+            queueDiv.appendChild(queueList);
+            nodeContainer.appendChild(queueDiv);
+
+            const unitList = document.createElement('div');
+            unitList.className = 'space-y-2 flex-grow overflow-y-auto';
+
+            Object.entries(UNIT_TYPES).forEach(([typeName, unitInfo]) => {
+                const isNavalUnit = unitInfo.tags.includes('naval');
+                const canProduceHere = isNavalUnit ? node.naval === true : true;
+                if (unitInfo.faction === faction && !unitInfo.tags.includes('ally_unit') && !unitInfo.tags.includes('nuke') && canProduceHere) {
+                    const btn = document.createElement('button');
+                    btn.className = `w-full text-left p-2 rounded text-sm bg-stone-700 hover:bg-stone-600`;
+                    btn.innerHTML = `<div class="flex justify-between items-center"><span>${unitInfo.icon} ${typeName}</span><span class="font-bold text-green-400">${unitInfo.cost}M</span></div>`;
+                    btn.addEventListener('click', () => {
+                        queueProduction(typeName, nodeId);
+                        populateProductionTab();
+                    });
+                    unitList.appendChild(btn);
+                }
+            });
+            nodeContainer.appendChild(unitList);
+            grid.appendChild(nodeContainer);
+        });
+        prodContent.appendChild(grid);
+    }
+
+    function populateStrategicTab() {
+        const stratContent = document.getElementById('content-strategic-arsenal');
+        if (!stratContent) return; 
+        stratContent.innerHTML = ''; 
+        const faction = gameState.playerFaction;
+        const factionState = faction === FACTIONS.ISRAEL ? gameState.israel : gameState.iran;
+        
+        const createStrategicWeaponButton = (text, action, targetType, icon, count = null, disabled = false, cooldown = 0) => {
+            const btn = document.createElement('button');
+            btn.className = 'w-full text-white font-bold py-3 px-4 rounded-lg transition-all duration-300 shadow-lg flex items-center justify-between gap-2 disabled:bg-stone-700 disabled:cursor-not-allowed border border-cyan-600 text-cyan-200 bg-red-800/80 hover:bg-red-700/90 border-red-600';
+            let countText = count !== null ? ` (${count} available)` : '';
+            if (cooldown > 0) countText = ` (Cooldown: ${cooldown} turns)`;
+            btn.innerHTML = `<span>${icon} ${text}${countText}</span>`;
+            btn.addEventListener('click', () => promptForTarget(action, 0, targetType));
+            btn.disabled = disabled || (count !== null && count <= 0) || cooldown > 0;
+            return btn;
+        };
+        
+        stratContent.innerHTML = `<p class="mb-4 text-stone-300">Authorize high-impact directives and asymmetric warfare options.</p>`;
+        const grid = document.createElement('div');
+        grid.className = 'grid grid-cols-1 md:grid-cols-2 gap-6';
+        
+        const conventionalWeapons = document.createElement('div');
+        conventionalWeapons.innerHTML = `<h4 class="font-bold text-lg mb-2 border-b border-red-500/50 pb-1 text-red-400">Strategic Arsenal</h4><div class="space-y-2"></div>`;
+        
+        const asymmetricWarfare = document.createElement('div');
+        asymmetricWarfare.innerHTML = `<h4 class="font-bold text-lg mb-2 border-b border-purple-500/50 pb-1 text-purple-400">Asymmetric Warfare</h4><div class="space-y-2"></div>`;
+
+        // Populate Conventional Weapons
+        if (faction === FACTIONS.IRAN) {
+            conventionalWeapons.lastChild.appendChild(createStrategicWeaponButton('Launch Fattah-1 Missile', 'launch_fattah', 'any_enemy_unit', '🚀', factionState.fattah1Stockpile));
+        } else {
+             conventionalWeapons.lastChild.appendChild(createStrategicWeaponButton('Ballistic Missile Strike', 'ballistic_strike', 'enemy_production', '🚀', null, false, factionState.ballisticStrikeCooldown));
+        }
+        conventionalWeapons.lastChild.appendChild(createStrategicWeaponButton('Strike Nuclear Facility', 'strike_nuclear_site', 'enemy_strategic', '☢️', null, false, factionState.nuclearSiteStrikeCooldown));
+        if(factionState.nukeReady) conventionalWeapons.lastChild.appendChild(createStrategicWeaponButton('Launch Nuclear Strike', 'launch_nuke', 'enemy_capital', '☢️'));
+        if(factionState.empReady) conventionalWeapons.lastChild.appendChild(createStrategicWeaponButton('Launch EMP Strike', 'launch_emp', 'enemy_node', '⚡'));
+        
+        // Populate Asymmetric Warfare
+        asymmetricWarfare.lastChild.appendChild(createStrategicWeaponButton('Major Cyber Attack', 'major_cyber_attack', 'enemy_capital', '💀', null, false, factionState.cyberAttackCooldown));
+        asymmetricWarfare.lastChild.appendChild(createStrategicWeaponButton('SEAD Strike', 'sead_strike', 'enemy_air_defense', '🛰️', null, false, factionState.seadStrikeCooldown));
+        
+        if (faction === FACTIONS.IRAN) {
+            asymmetricWarfare.lastChild.appendChild(createStrategicWeaponButton('Mass Proxy Attack', 'proxy_attack', 'any', '🔥', null, false, factionState.proxyAttackCooldown));
+        }
+
+        if(conventionalWeapons.lastChild.children.length > 0) grid.appendChild(conventionalWeapons);
+        if(asymmetricWarfare.lastChild.children.length > 0) grid.appendChild(asymmetricWarfare);
+        
+        stratContent.appendChild(grid);
+    }
+    
+    // --- All functions from here down are restored and complete ---
+    function populateRnDTab(){
+        const rndContent = document.getElementById('content-rnd');
+        if (!rndContent) return;
+        rndContent.innerHTML = '';
+        const faction = gameState.playerFaction;
+        const factionState = faction === FACTIONS.ISRAEL ? gameState.israel : gameState.iran;
+        
+        const createRndProject = (title, description, progress, onFund, isComplete, completeText) => {
+            const projectDiv = document.createElement('div');
+            projectDiv.className = 'bg-black/20 p-4 rounded-lg';
+            projectDiv.innerHTML = `<h4 class="text-lg font-bold">${title}</h4><p class="text-sm text-stone-400 mb-3">${description}</p>`;
+
+            const progressContainer = document.createElement('div');
+            progressContainer.className = 'w-full bg-gray-700 rounded-full h-4 progress-bar-container';
+            const progressBar = document.createElement('div');
+            progressBar.className = 'h-4 rounded-full transition-all duration-500 progress-bar bg-yellow-400';
+            progressBar.style.width = `${progress}%`;
+            progressContainer.appendChild(progressBar);
+            projectDiv.appendChild(progressContainer);
+            
+            if (isComplete) {
+                const completeDiv = document.createElement('div');
+                completeDiv.className = 'text-center font-bold text-green-400 p-2 bg-green-900/50 rounded';
+                completeDiv.textContent = completeText;
+                projectDiv.appendChild(completeDiv);
+            } else {
+                const fundBtn = document.createElement('button');
+                fundBtn.className = 'w-full text-white font-bold py-3 px-4 rounded-lg transition-all duration-300 shadow-lg flex items-center justify-between gap-2 disabled:bg-stone-700 disabled:cursor-not-allowed border border-cyan-600 text-cyan-200 bg-cyan-800/70 hover:bg-cyan-700/90';
+                fundBtn.textContent = 'Fund Project (500M)';
+                fundBtn.disabled = factionState.budget < 500;
+                fundBtn.addEventListener('click', () => {
+                    factionState.budget -= 500;
+                    onFund();
+                    populateRnDTab();
+                    populateStrategicTab();
+                    populateSitRepTab();
+                });
+                projectDiv.appendChild(fundBtn);
+            }
+            return projectDiv;
+        };
+
+        const grid = document.createElement('div');
+        grid.className = 'grid grid-cols-1 md:grid-cols-2 gap-6';
+
+        const nukeTitle = faction === FACTIONS.ISRAEL ? "Maintain Deterrent" : "Nuclear Weapons Program";
+        const nukeDesc = faction === FACTIONS.ISRAEL ? "Enhance the readiness and yield of the existing nuclear deterrent." : "Develop a viable nuclear warhead for strategic deterrence.";
+        const nukeProject = createRndProject(nukeTitle, nukeDesc, factionState.nukeProg,
+            () => { factionState.nukeProg = Math.min(100, factionState.nukeProg + 10); if(factionState.nukeProg >= 100) { factionState.nukeReady = true; populateStrategicTab();} },
+            factionState.nukeReady, "✅ NUCLEAR OPTION AVAILABLE");
+        grid.appendChild(nukeProject);
+
+        const empProject = createRndProject("EMP Bomb Development", "Research and develop a non-lethal weapon capable of paralyzing enemy electronics.",
+            factionState.empProg, () => { factionState.empProg = Math.min(100, factionState.empProg + 8); if(factionState.empProg >= 100) { factionState.empReady = true; populateStrategicTab(); } },
+            factionState.empReady, "✅ EMP OPTION AVAILABLE");
+        grid.appendChild(empProject);
+        
+        rndContent.appendChild(grid);
+    }
+    
+    function promptForTarget(action, cost, targetType) {
+        saveUndoState();
+        const faction = gameState.playerFaction;
+        const enemyFaction = faction === FACTIONS.ISRAEL ? FACTIONS.IRAN : FACTIONS.ISRAEL;
+        const stratContent = document.getElementById('content-strategic-arsenal');
+        if (!stratContent) return;
+
+        let targets = [];
+        let promptText = '';
+
+        switch (targetType) {
+            case 'enemy_node':
+                promptText = 'Select a target node for the EMP strike:';
+                targets = Object.keys(gameState.nodes).filter(id => gameState.nodes[id].faction === enemyFaction && gameState.units.some(u => u.nodeId === id));
+                break;
+            case 'enemy_capital':
+                 promptText = 'WARNING: NUCLEAR STRIKE. Select enemy capital to target:';
+                 const capitalId = Object.keys(gameState.nodes).find(id => gameState.nodes[id].capital && gameState.nodes[id].faction === enemyFaction);
+                 if(capitalId) targets.push(capitalId);
+                 break;
+            case 'enemy_production':
+                promptText = 'Select an enemy production node to strike:';
+                targets = Object.keys(gameState.nodes).filter(id => gameState.nodes[id].faction === enemyFaction && gameState.nodes[id].production);
+                break;
+            case 'enemy_air_defense':
+                 promptText = 'Select an enemy air defense unit to suppress:';
+                 targets = gameState.units.filter(u => u.faction === enemyFaction && u.tags.includes('air_defense') && isVisible(u, faction));
+                 break;
+            case 'enemy_strategic':
+                promptText = 'WARNING: HIGH POLITICAL COST. Select a strategic facility to strike:';
+                targets = Object.keys(gameState.nodes).filter(id => gameState.nodes[id].strategic && gameState.nodes[id].faction === enemyFaction);
+                break;
+            case 'any_enemy_unit':
+                promptText = `Select a target for the ${action.replace(/_/g, ' ')}:`;
+                targets = gameState.units.filter(u => u.faction !== faction && isVisible(u, faction));
+                break;
+            case 'any': // For actions that don't need a specific target
+                executeStrategicAction(action, 0);
+                return;
+        }
+        
+        stratContent.innerHTML = '';
+
+        const header = document.createElement('h4');
+        header.className = 'font-bold mt-4 mb-2';
+        header.textContent = promptText;
+        stratContent.appendChild(header);
+
+        if (targets.length === 0) {
+            const p = document.createElement('p');
+            p.className = 'text-yellow-400 mt-2';
+            p.textContent = 'No valid targets available for this action.';
+            stratContent.appendChild(p);
+            setTimeout(populateStrategicTab, 2000);
+            return;
+        }
+        
+        const targetContainer = document.createElement('div');
+        targetContainer.className = 'space-y-2';
+
+        targets.forEach(target => {
+            const btn = document.createElement('button');
+            btn.className = 'w-full text-white font-bold py-3 px-4 rounded-lg transition-all duration-300 shadow-lg flex items-center justify-between gap-2 disabled:bg-stone-700 disabled:cursor-not-allowed border border-cyan-600 text-cyan-200 bg-cyan-800/70 hover:bg-cyan-700/90 text-sm';
+            
+            let targetId, targetName;
+            if (typeof target === 'string') {
+                targetId = target;
+                targetName = gameState.nodes[target].name;
+            } else {
+                targetId = target.id;
+                targetName = `${target.icon} ${getUnitTypeName(target)} at ${gameState.nodes[target.nodeId].name}`;
+            }
+
+            btn.textContent = targetName;
+            btn.addEventListener('click', () => executeStrategicAction(action, cost, targetId));
+            targetContainer.appendChild(btn);
+        });
+
+        stratContent.appendChild(targetContainer);
+        
+        const cancelBtn = document.createElement('button');
+        cancelBtn.className = 'w-full text-white font-bold py-3 px-4 rounded-lg transition-all duration-300 shadow-lg flex items-center justify-between gap-2 disabled:bg-stone-700 disabled:cursor-not-allowed border border-cyan-600 text-cyan-200 bg-gray-600 hover:bg-gray-500 mt-4';
+        cancelBtn.textContent = 'Cancel';
+        cancelBtn.addEventListener('click', populateStrategicTab);
+        stratContent.appendChild(cancelBtn);
+    }
+    
+    function executeStrategicAction(action, cost, targetId = null) {
+        const faction = gameState.playerFaction;
+        const factionState = gameState[faction.toLowerCase()];
+        if (factionState.budget < cost) {
+            logEvent("Insufficient funds for strategic action.", "system");
+            return;
+        }
+        factionState.budget -= cost;
+
+        performStrategicAction(action, targetId, faction);
+        
+        closeCommandCenter();
+    };
+
+    function performStrategicAction(action, targetId, faction) {
+        const factionState = faction === FACTIONS.ISRAEL ? gameState.israel : gameState.iran;
+        const enemyFaction = faction === FACTIONS.ISRAEL ? FACTIONS.IRAN : FACTIONS.ISRAEL;
+
+        let startNode, endNode;
+        const capitalId = Object.keys(gameState.nodes).find(id => gameState.nodes[id].capital && gameState.nodes[id].faction === faction);
+        const startPt = capitalId ? { x: gameState.nodes[capitalId].x * canvas.width, y: gameState.nodes[capitalId].y * canvas.height } : {x:0, y:0};
+
+        switch (action) {
+            case 'launch_nuke':
+                endNode = gameState.nodes[targetId];
+                if (endNode) {
+                    logEvent(`NUCLEAR LAUNCH DETECTED! TARGET: ${endNode.name.toUpperCase()}!`, 'system');
+                    gameState.winner = faction;
+                    gameState.nuclearDetonation = { attackerFaction: faction, targetNode: targetId };
+                    // Add animation
+                    gameState.projectiles.push({startPt, endPt: { x: endNode.x * canvas.width, y: endNode.y * canvas.height }, progress: 0, duration: 3000, icon: '☢️', color: '#facc15' });
+                    setTimeout(() => createExplosion(endNode.x * canvas.width, endNode.y * canvas.height, {particleCount: 200, color1:'255,255,255', color2:'251,146,60'}), 3000);
+                }
+                break;
+            case 'launch_fattah':
+                if (factionState.fattah1Stockpile > 0) {
+                    const targetUnit = getUnit(targetId);
+                    if (targetUnit) {
+                        endNode = gameState.nodes[targetUnit.nodeId];
+                         targetUnit.currentHp = Math.max(0, targetUnit.currentHp - 80);
+                         logEvent(`A Fattah-1 hypersonic missile impacts ${getUnitTypeName(targetUnit)}, dealing devastating damage!`, 'special');
+                         if (targetUnit.currentHp <= 0) logEvent(`${getUnitTypeName(targetUnit)} obliterated!`, 'combat');
+                         factionState.fattah1Stockpile--;
+                         createExplosion(endNode.x * canvas.width, endNode.y * canvas.height, {color1: '255,100,100', color2: '200,50,50'});
+                    }
+                }
+                break;
+            case 'ballistic_strike':
+                endNode = gameState.nodes[targetId];
+                if(endNode) {
+                    gameState.units.filter(u => u.nodeId === targetId).forEach(u => u.currentHp = Math.max(0, u.currentHp - 70));
+                    logEvent(`A Jericho III missile impacts ${endNode.name}, causing widespread damage to units in the area!`, 'special');
+                    factionState.ballisticStrikeCooldown = 3;
+                    gameState.projectiles.push({startPt, endPt: { x: endNode.x * canvas.width, y: endNode.y * canvas.height }, progress: 0, duration: 1500, icon: '🚀', color: '#60a5fa' });
+                    setTimeout(() => createExplosion(endNode.x * canvas.width, endNode.y * canvas.height, {particleCount: 80}), 1500);
+                }
+                break;
+            case 'strike_nuclear_site':
+                 endNode = gameState.nodes[targetId];
+                 if(endNode) {
+                    endNode.income = Math.floor(endNode.income / 2);
+                    endNode.disabledTurns = 5; 
+                    factionState.morale -= 25; 
+                    logEvent(`A daring airstrike hits the strategic facility at ${endNode.name}! International condemnation follows, impacting national morale.`, 'special');
+                    factionState.nuclearSiteStrikeCooldown = 5;
+                    createExplosion(endNode.x * canvas.width, endNode.y * canvas.height, {particleCount: 150});
+                 }
+                break;
+            case 'launch_emp':
+                endNode = gameState.nodes[targetId];
+                if(endNode) {
+                    const empUnits = gameState.units.filter(u => getDistance(u.nodeId, targetId) <= 1 && u.faction !== faction);
+                    empUnits.forEach(u => u.paralyzedTurns = 2);
+                    logEvent(`An EMP bomb detonates over ${endNode.name}, disabling nearby enemy units!`, 'special');
+                    createAreaEffect('emp', endNode.x * canvas.width, endNode.y * canvas.height, { radius: 100 });
+                }
+                break;
+            case 'major_cyber_attack':
+                 const enemyCapitalId = Object.keys(gameState.nodes).find(id => gameState.nodes[id].capital && gameState.nodes[id].faction === enemyFaction);
+                 if(enemyCapitalId) {
+                     const capitalNode = gameState.nodes[enemyCapitalId];
+                     capitalNode.disabledTurns = 2;
+                     logEvent(`A major cyber attack hits the enemy capital, shutting down production!`, 'special');
+                     factionState.cyberAttackCooldown = 4;
+                     createAreaEffect('cyber', capitalNode.x * canvas.width, capitalNode.y * canvas.height, { radius: 60, duration: 1500, color: '134, 239, 172' });
+                 }
+                break;
+            case 'sead_strike':
+                 const seadTarget = getUnit(targetId);
+                 if(seadTarget) {
+                     seadTarget.paralyzedTurns = 3;
+                     endNode = gameState.nodes[seadTarget.nodeId];
+                     logEvent(`A SEAD strike disables the ${getUnitTypeName(seadTarget)}!`, 'special');
+                     factionState.seadStrikeCooldown = 4;
+                     createExplosion(endNode.x*canvas.width, endNode.y*canvas.height, {particleCount:30, color1:'110,231,255', color2:'34,211,238'});
+                 }
+                 break;
+            case 'proxy_attack':
+                const borderNodes = ['golan_heights', 'erbil', 'damascus'].filter(id => gameState.nodes[id]?.faction === FACTIONS.ISRAEL);
+                if (borderNodes.length > 0) {
+                    logEvent(`A massed proxy attack strikes Israeli positions across the border!`, 'special');
+                    borderNodes.forEach(nodeId => {
+                         gameState.units.filter(u => u.nodeId === nodeId).forEach(u => u.currentHp = Math.max(0, u.currentHp - 25));
+                         const proxyNode = gameState.nodes[nodeId];
+                         createExplosion(proxyNode.x * canvas.width, proxyNode.y * canvas.height, {particleCount: 20});
+                    });
+                } else {
+                    logEvent("A mass proxy attack was ordered, but no vulnerable border positions were found.", 'system');
+                }
+                factionState.proxyAttackCooldown = 3;
+                break;
+        }
+        updateUI();
+    }
+
+    // --- Diplomacy ---
+    function openDiplomacyModal() {
+        const faction = gameState.playerFaction;
+        const factionState = gameState[faction.toLowerCase()];
+        const diplomacyContent = document.getElementById('diplomacy-content');
+        const diplomacyTitle = document.getElementById('diplomacy-title');
+        const ally = faction === FACTIONS.ISRAEL ? ALLIES.USA : ALLIES.RUSSIA;
+        
+        diplomacyTitle.textContent = `Diplomatic Channels: ${ally}`;
+        diplomacyContent.innerHTML = '';
+
+        const createOption = (title, description, cost, successChance, action, disabled = false) => {
+            const container = document.createElement('div');
+            container.className = 'p-3 bg-stone-700/50 rounded-lg mb-3';
+            container.innerHTML = `<h4 class="font-bold">${title}</h4>
+                <p class="text-sm text-stone-300">${description}</p>
+                <div class="flex justify-between items-center mt-2 text-sm">
+                    <span>Cost: <span class="font-bold text-yellow-300">${cost}M</span></span>
+                    <span>Success: <span class="font-bold text-blue-300">${Math.round(successChance * 100)}%</span></span>
+                </div>`;
+            const btn = document.createElement('button');
+            btn.className = 'w-full text-white font-bold py-3 px-4 rounded-lg transition-all duration-300 shadow-lg flex items-center justify-center gap-2 disabled:bg-stone-700 disabled:cursor-not-allowed bg-cyan-700 hover:bg-cyan-600 mt-2 text-sm py-2';
+            btn.textContent = 'Make Request';
+            btn.disabled = factionState.budget < cost || disabled || factionState.aidRequestCooldown > 0;
+            btn.onclick = () => {
+                factionState.budget -= cost;
+                factionState.aidRequestCooldown = 4;
+                if (Math.random() < successChance) {
+                    action();
+                } else {
+                    logEvent(`Diplomatic request to ${ally} was denied.`, faction);
+                    closeDiplomacyModal();
+                }
+            };
+            container.appendChild(btn);
+            return container;
+        };
+
+        const cooldownText = factionState.aidRequestCooldown > 0 ? `<p class="text-center text-yellow-400">Diplomatic channels are cooling down. Available in ${factionState.aidRequestCooldown} turns.</p>` : '';
+        diplomacyContent.innerHTML = cooldownText;
+        
+        diplomacyContent.appendChild(createOption(
+            'Request Financial Aid', 'Request an emergency injection of 2500M to fund the war effort.', 250, 0.7, () => {
+                logEvent(`${ally} agrees to provide 2500M in emergency war aid!`, 'special');
+                factionState.budget += 2500;
+                closeDiplomacyModal();
+            }
+        ));
+        
+        const hardwareUnit = faction === FACTIONS.ISRAEL ? 'F-22 Raptor' : 'Su-57 Felon';
+        diplomacyContent.appendChild(createOption(
+            `Request Advanced Fighters`, `Request a squadron of advanced ${hardwareUnit} fighters.`, 1000, 0.4, () => {
+                const capitalId = Object.keys(gameState.nodes).find(id => gameState.nodes[id].capital && gameState.nodes[id].faction === faction);
+                if (capitalId) {
+                     logEvent(`${ally} delivers a squadron of ${hardwareUnit} fighters to ${gameState.nodes[capitalId].name}!`, 'special');
+                     createUnit(hardwareUnit, capitalId);
+                     createUnit(hardwareUnit, capitalId);
+                }
+                closeDiplomacyModal();
+            }
+        ));
+
+        diplomacyContent.appendChild(createOption(
+            'Request Intelligence Sharing', 'Ask allied intelligence to pinpoint a hidden enemy unit.', 400, 0.6, () => {
+                const hiddenEnemy = gameState.units.find(u => u.faction !== faction && u.tags.includes('stealth') && !u.revealed);
+                if(hiddenEnemy) {
+                    hiddenEnemy.revealed = true;
+                    logEvent(`Allied intelligence shares data, revealing a hidden ${getUnitTypeName(hiddenEnemy)} at ${gameState.nodes[hiddenEnemy.nodeId].name}!`, 'special');
+                } else {
+                    logEvent(`Allied intelligence reports no hidden units could be found at this time.`, 'system');
+                }
+                closeDiplomacyModal();
+            }
+        ));
+
+        diplomacyModal.style.display = 'flex';
+        setTimeout(() => diplomacyModal.style.opacity = '1', 10);
+    }
+    
+    function closeDiplomacyModal() {
+        diplomacyModal.style.opacity = '0';
+        setTimeout(() => {
+            diplomacyModal.style.display = 'none';
+        }, 300);
+    }
+
+    function closeCommandCenter() {
+        commandCenterModal.style.opacity = '0';
+        setTimeout(() => {
+            commandCenterModal.style.display = 'none';
+        }, 300);
+    }
+    
+    // RESTORED
+    async function populateIntelligenceTab() {
+        const intelContent = document.getElementById('content-intelligence');
+        if (!intelContent) return; 
+        intelContent.innerHTML = `<div class="animate-spin rounded-full h-8 w-8 border-b-2 border-white mx-auto my-4"></div><p class="text-center">Compiling intelligence report...</p>`;
+        
+        try {
+            if (!API_KEY || API_KEY.includes("YOUR_API_KEY_HERE")) throw new Error("API Key not configured.");
+
+            const response = await fetch(API_URL, {
+                method: 'POST',
+                headers: { 'Content-Type': 'application/json' },
+                body: JSON.stringify({ "contents": [{ "parts": [{ "text": getProbableActionsPrompt() }] }] })
+            });
+            if (!response.ok) throw new Error(`API Error: ${response.statusText}`);
+            const data = await response.json();
+            if (!data.candidates || data.candidates.length === 0) throw new Error("API returned no content.");
+            const rawText = data.candidates[0].content.parts[0].text;
+            const startIndex = rawText.indexOf('{');
+            const endIndex = rawText.lastIndexOf('}');
+            if (startIndex === -1 || endIndex === -1) {
+                throw new Error("Valid JSON object not found in the API response.");
+            }
+            const jsonText = rawText.substring(startIndex, endIndex + 1);
+            const predictions = JSON.parse(jsonText).predictions;
+
+            intelContent.innerHTML = `
+                <h3 class="font-bold text-lg mb-4">Intelligence Report</h3>
+                <div>
+                    <h4 class="font-bold">Most Probable Enemy Actions</h4>
+                    <div class="text-sm mt-2 space-y-2 pr-2 bg-black/20 p-3 rounded">
+                        ${predictions.map(p => `<div>- ${p}</div>`).join('')}
+                    </div>
+                </div>
+                <div class="mt-6">
+                    <button id="request-counsel-btn" class="w-full text-white font-bold py-3 px-4 rounded-lg transition-all duration-300 shadow-lg flex items-center justify-center gap-2 disabled:bg-stone-700 disabled:cursor-not-allowed bg-purple-600 hover:bg-purple-500">Request Strategic Counsel</button>
+                </div>`;
+            document.getElementById('request-counsel-btn').addEventListener('click', getStrategicCounsel);
+        } catch (error) {
+             intelContent.innerHTML = `
+                <p class="text-red-400">Could not retrieve AI analysis: ${error.message}</p>
+                 <div class="mt-6">
+                    <button id="request-counsel-btn" class="w-full text-white font-bold py-3 px-4 rounded-lg transition-all duration-300 shadow-lg flex items-center justify-center gap-2 disabled:bg-stone-700 disabled:cursor-not-allowed bg-purple-600 hover:bg-purple-500">Request Strategic Counsel</button>
+                </div>`;
+            document.getElementById('request-counsel-btn').addEventListener('click', getStrategicCounsel);
+        }
+    }
+    
+    // RESTORED
+    async function getStrategicCounsel() {
+        const intelContent = document.getElementById('strategyOptions'); 
+        if (!intelContent) return;
+        
+        if (!API_KEY || API_KEY.includes("YOUR_API_KEY_HERE")) {
+            strategyModal.style.display = 'flex';
+            strategyModal.style.opacity = '1';
+            intelContent.innerHTML = `<p class="text-red-400">AI Strategic Counsel is unavailable. Please configure your Gemini API key.</p>`;
+            return;
+        }
+
+        closeCommandCenter();
+        strategyModal.style.display = 'flex';
+        strategyModal.style.opacity = '1';
+        intelContent.innerHTML = `<div class="animate-spin rounded-full h-8 w-8 border-b-2 border-white mx-auto"></div><p class="text-center">Awaiting strategic analysis from ODIN...</p>`;
+        document.getElementById('strategyTitle').textContent = `AI Strategic Counsel`;
+
+        try {
+            const response = await fetch(API_URL, {
+                method: 'POST',
+                headers: { 'Content-Type': 'application/json' },
+                body: JSON.stringify({ "contents": [{ "parts": [{ "text": getStrategicCounselPrompt() }] }] })
+            });
+
+            if (!response.ok) throw new Error(`API Error: ${response.statusText}`);
+            const data = await response.json();
+            if (!data.candidates || data.candidates.length === 0) throw new Error("API returned no content.");
+            const rawText = data.candidates[0].content.parts[0].text;
+            const startIndex = rawText.indexOf('{');
+            const endIndex = rawText.lastIndexOf('}');
+            if (startIndex === -1 || endIndex === -1) {
+                throw new Error("Valid JSON object not found in the API response.");
+            }
+            const jsonText = rawText.substring(startIndex, endIndex + 1);
+            const jsonResponse = JSON.parse(jsonText);
+            intelContent.innerHTML = jsonResponse.priorities.map(opt => `
+                <div class="bg-stone-700/50 p-4 rounded-lg text-left text-sm space-y-1">
+                    <p><strong>Priority ${opt.priority} (${opt.type}): <span class="text-yellow-300">${opt.title}</span></strong></p>
+                    <p class="font-normal">${opt.justification}</p>
+                </div>
+            `).join('');
+        } catch (error) {
+            intelContent.innerHTML = `<p class="text-red-400">Could not retrieve advice. ${error.message}</p>`;
+        }
+    }
+
+    // --- AI & Startup ---
+    async function checkAlliedIntervention(faction) {
+        const factionState = faction === FACTIONS.ISRAEL ? gameState.israel : gameState.iran;
+        const enemyFaction = faction === FACTIONS.ISRAEL ? FACTIONS.IRAN : FACTIONS.ISRAEL;
+        let interventionChance = 0;
+
+        const capitalId = Object.keys(gameState.nodes).find(id => gameState.nodes[id].capital && gameState.nodes[id].faction === faction);
+        if (capitalId) {
+            const adjacentEnemies = gameState.units.filter(u => u.faction === enemyFaction && getDistance(u.nodeId, capitalId) === 1);
+            if (adjacentEnemies.length > 0) {
+                interventionChance += 0.20; 
+                logEvent(`URGENT: Enemy forces detected near ${gameState.nodes[capitalId].name}! Allied intervention may be imminent.`, "system");
+            }
+        }
+
+        if (factionState.morale < 30) {
+            interventionChance += 0.20;
+        }
+        
+        if (faction === FACTIONS.ISRAEL && gameState.iran.nukeProg > 80) {
+            interventionChance += 0.30;
+            logEvent(`Intel suggests Iran's nuclear program is nearing completion. The US may intervene.`, "special");
+        }
+
+        if (Math.random() < interventionChance) {
+            logEvent(`The international situation has escalated! ${faction}'s allies are intervening!`, "special");
+            await sleep(1000);
+            if (faction === FACTIONS.ISRAEL) {
+                logEvent(`The USS Gerald R. Ford arrives off the coast, launching F-35 squadrons!`, "special");
+                if (gameState.nodes['haifa'].naval) {
+                    createUnit('F-35I Adir', 'haifa');
+                    createUnit('F-35I Adir', 'haifa');
+                }
+                factionState.budget += 3000;
+            } else {
+                logEvent(`Russia condemns the aggression and provides direct military support to Iran!`, "special");
+                createUnit('Su-57 Felon', 'tehran');
+                factionState.logistics = 100;
+            }
+        }
+    }
+
+    async function runAITurn(faction) {
+        const myUnits = [...gameState.units.filter(u => u.faction === faction && u.paralyzedTurns === 0)];
+        const enemyUnits = gameState.units.filter(u => u.faction !== faction);
+        const factionState = faction === FACTIONS.ISRAEL ? gameState.israel : gameState.iran;
+
+        // R&D Investment
+        if (factionState.budget > 3000 && Math.random() < 0.5) {
+            if (!factionState.nukeReady) {
+                factionState.budget -= 500;
+                factionState.nukeProg = Math.min(100, factionState.nukeProg + 10);
+                if(factionState.nukeProg >= 100) factionState.nukeReady = true;
+                logEvent("AI is investing in its nuclear program.", faction);
+                await sleep(500);
+            } else if (!factionState.empReady) {
+                factionState.budget -= 500;
+                factionState.empProg = Math.min(100, factionState.empProg + 8);
+                if(factionState.empProg >= 100) factionState.empReady = true;
+                 logEvent("AI is investing in EMP technology.", faction);
+                await sleep(500);
+            }
+        }
+
+        // Offensive Actions
+        for (const unit of myUnits) {
+            if (!getUnit(unit.id) || getUnit(unit.id).hasAttacked) continue;
+            
+            const reachable = getReachableNodes(unit);
+            let targetToAttack = null;
+            if (reachable.attackable.length > 0) {
+                const potentialTargets = reachable.attackable.map(nodeId => enemyUnits.find(u => u.nodeId === nodeId)).filter(Boolean);
+                if (potentialTargets.length > 0) {
+                    const getTargetScore = (target) => {
+                        let score = (target.attack + (target.hp - target.currentHp)) / (target.defense + 5);
+                        if (UNIT_TYPES[target.typeName]?.tags.includes('high_value')) score += 5;
+                        if (UNIT_TYPES[target.typeName]?.tags.includes('strategic_striker')) score += 5;
+                        if (UNIT_TYPES[target.typeName]?.tags.includes('interceptor')) score += 4;
+                        const targetNode = gameState.nodes[target.nodeId];
+                        if (targetNode.capital) score += 6;
+                        if (targetNode.strategic) score += 4;
+                        return score;
+                    };
+                    targetToAttack = potentialTargets.sort((a, b) => getTargetScore(b) - getTargetScore(a))[0];
+                }
+            }
+
+            if (targetToAttack) {
+                await performAttack(unit, targetToAttack);
+                await sleep(500);
+            }
+        }
+        
+        // Movement & Expansion
+        for (const unit of myUnits) {
+             const currentUnitState = getUnit(unit.id);
+            if(!currentUnitState || currentUnitState.hasAttacked || currentUnitState.movesLeft <= 0) continue;
+
+            let objectiveNodeId = null;
+            const neutralProdNodes = Object.entries(gameState.nodes).filter(([id, n]) => n.faction === null && n.production);
+            if (neutralProdNodes.length > 0) {
+                neutralProdNodes.sort(([,a], [,b]) => getDistance(currentUnitState.nodeId, Object.keys(gameState.nodes).find(k=>gameState.nodes[k]===a)) - getDistance(currentUnitState.nodeId, Object.keys(gameState.nodes).find(k=>gameState.nodes[k]===b)));
+                objectiveNodeId = neutralProdNodes[0][0];
+            } else {
+                const enemyCapitalId = Object.keys(gameState.nodes).find(id => gameState.nodes[id].capital && gameState.nodes[id].faction !== faction);
+                objectiveNodeId = enemyCapitalId;
+            }
+            
+            if (objectiveNodeId) {
+                const path = findPath(currentUnitState.nodeId, objectiveNodeId);
+                if (path && path.length > 1) {
+                    let moveTargetNode = null;
+                    for (let i = Math.min(path.length - 1, currentUnitState.movesLeft); i > 0; i--) {
+                        const potentialNodeId = path[i];
+                        if (getReachableNodes(currentUnitState).movable.includes(potentialNodeId)) {
+                            moveTargetNode = potentialNodeId;
+                            break;
+                        }
+                    }
+                    if (moveTargetNode) {
+                        await moveUnit(currentUnitState, moveTargetNode);
+                        await sleep(500);
+                    }
+                }
+            }
+        }
+        
+        // Production
+        const productionNodes = Object.entries(gameState.nodes).filter(([id, n]) => n.faction === faction && n.production);
+        for (const [nodeId, node] of productionNodes) {
+             if (node.productionQueue.length < 2 && factionState.budget > 1000) {
+                const affordableUnits = Object.entries(UNIT_TYPES)
+                    .filter(([, unitInfo]) => {
+                        const isFactionUnit = unitInfo.faction === faction;
+                        const isStandardUnit = !unitInfo.tags.includes('ally_unit') && !unitInfo.tags.includes('nuke');
+                        const hasBudget = factionState.budget >= unitInfo.cost;
+                        const canProduceHere = unitInfo.tags.includes('naval') ? node.naval === true : true;
+                        return isFactionUnit && isStandardUnit && hasBudget && canProduceHere;
+                    })
+                    .sort(([, a], [, b]) => b.attack - a.attack);
+
+                if (affordableUnits.length > 0) {
+                    const [typeName] = affordableUnits[0];
+                    queueProduction(typeName, nodeId);
+                    await sleep(200);
+                }
+            }
+        }
+    }
+    
+    async function runSingleAITurn() {
+        gameState.isProcessing = true;
+        updateUI();
+        logEvent(`The ${gameState.turn} AI is commanding its forces...`, 'system', gameState.time);
+        await sleep(1000); 
+
+        try {
+            await runAITurn(gameState.turn);
+        } catch (error) {
+            console.error("An error occurred during the AI turn:", error);
+            logEvent(`A critical error occurred in the AI's logic. Attempting to recover.`, "system", gameState.time);
+        } finally {
+            if (gameState.winner) {
+                gameState.isProcessing = false;
+                updateUI();
+                return;
+            }
+            await endTurn();
+            gameState.isProcessing = false;
+            updateUI();
+        }
+    }
+
+    async function processTurns() {
+        try {
+            while (!gameState.winner && !gameState.playerFaction) {
+                await runSingleAITurn();
+                await sleep(1000);
+            }
+        } catch (error) {
+            console.error("Error in processTurns:", error);
+            logEvent(`A critical error occurred in the simulation loop: ${error.message}`, "system", gameState.time);
+        } finally {
+            gameState.isProcessing = false;
+            if (gameState.winner) logEvent(`${gameState.winner} is victorious!`, "system", gameState.time);
+            updateUI();
+        }
+    }
+    
+    // --- Timeline Loading Logic ---
+    async function loadFactualTimeline() {
+        loadingStatus.textContent = 'Loading Factual Conflict Timeline...';
+        logEvent(`--- LOADING HISTORICAL INTELLIGENCE ---`, "system");
+        
+        const events = [
+            { date: new Date('1979-02-11'), text: "The Iranian Revolution concludes, establishing an Islamic Republic with a staunchly anti-Israel ideology.", faction: 'system' },
+            { date: new Date('1982-06-06'), text: "During the Lebanon War, Iran's IRGC helps establish Hezbollah, which becomes a key Iranian proxy against Israel.", faction: FACTIONS.IRAN },
+            { date: new Date('2020-01-03'), text: "A US drone strike kills IRGC Quds Force Commander Qasem Soleimani, architect of Iran's regional proxy network.", faction: 'special' },
+            { date: new Date('2020-11-27'), text: "Top Iranian nuclear scientist Mohsen Fakhrizadeh is killed in an ambush near Tehran. Iran blames Israel.", faction: FACTIONS.ISRAEL },
+            { date: new Date('2024-04-01'), text: "An Israeli airstrike destroys the Iranian consulate in Damascus, killing senior IRGC commander Gen. Mohammad Reza Zahedi.", faction: FACTIONS.ISRAEL },
+            { date: new Date('2024-04-13'), text: "In direct response, Iran launches an unprecedented drone and missile barrage at Israel. The attack is largely intercepted by a US-led coalition.", faction: FACTIONS.IRAN },
+            { date: new Date('2024-04-19'), text: "Israel conducts a limited retaliatory strike, hitting an air defense system near Isfahan, Iran.", faction: FACTIONS.ISRAEL },
+            { date: new Date('2024-10-01'), text: "Iran launches another large-scale ballistic missile attack against Israel in retaliation for the assassination of Hezbollah's leader.", faction: FACTIONS.IRAN },
+            { date: new Date('2024-10-26'), text: "Israel conducts widespread overt attacks on Iran, targeting air defense systems and missile-related facilities.", faction: FACTIONS.ISRAEL },
+        ];
+        
+        for (const event of events) {
+            await sleep(50);
+            logEvent(event.text, event.faction, event.date);
+        }
+        
+        return events[events.length - 1].date;
+    }
+
+    // --- User Intel Functions ---
+    function promptForUserIntel(lastEventDate) {
+        loadingModal.style.display = 'none';
+        const today = new Date();
+        const lastEventDateString = lastEventDate.toLocaleDateString('en-CA');
+        const todayString = today.toLocaleDateString('en-CA');
+        
+        const promptText = `You are a geopolitical analyst. Based on real-world events, create a plausible, real world summary of all major military or diplomatic events in the Iran-Israel conflict that could have occurred between ${lastEventDateString} and ${todayString}.
+
+CRITICAL: Your entire response must be ONLY a valid JSON array of objects. Do not include any other text, explanations, or markdown.
+
+Each object in the array must have three keys:
+1. "date": A string in "YYYY-MM-DD" format, chronologically ordered between the two dates.
+2. "event": A string describing the factual event.
+3. "faction": A string which must be one of the following: "Israel", "Iran", "World", or "special" (for other actors like the US).
+
+Example of a valid response:
+[
+  { "date": "2024-11-15", "event": "Omani-mediated de-escalation talks between Iranian and US officials collapse after Iran's lead negotiator walks out.", "faction": "World" },
+  { "date": "2025-01-05", "event": "A confirmed Israeli airstrike targets an Iranian weapons depot in Syria, significantly damaging missile supplies.", "faction": "Israel" }
+]`;
+
+        document.getElementById('aiPrompt').textContent = promptText;
+        userIntelModal.style.display = 'flex';
+        setTimeout(() => userIntelModal.style.opacity = 1, 10);
+
+        document.getElementById('aiPrompt').onclick = () => {
+            navigator.clipboard.writeText(promptText).then(() => {
+                const originalText = document.getElementById('aiPrompt').textContent;
+                document.getElementById('aiPrompt').textContent = "Copied to clipboard!";
+                setTimeout(() => document.getElementById('aiPrompt').textContent = originalText, 2000);
+            });
+        };
+    }
+
+    function startGameplay(finalDate) {
+        userIntelModal.style.opacity = 0;
+        setTimeout(() => userIntelModal.style.display = 'none', 300);
+        
+        gameState.time = new Date(finalDate);
+        gameState.time.setDate(gameState.time.getDate() + 1); 
+
+        createUnit('F-35I Adir', 'damascus');
+        gameState.nodes['damascus'].faction = FACTIONS.ISRAEL;
+        createUnit('Quds Force', 'baghdad');
+        gameState.nodes['baghdad'].faction = FACTIONS.IRAN;
+        
+        createUnit('Iron Dome', 'tel_aviv');
+        createUnit('S-300PMU2', 'tehran');
+        createUnit('Arrow 3', 'jerusalem');
+
+        loadingModal.style.display = 'none';
+        beginSimBtn.classList.remove('hidden');
+        beginSimBtn.disabled = false;
+        logEvent("The simulation is live. You are in command.", "system", gameState.time);
+        updateUI();
+    }
+
+    document.getElementById('skipUserIntelBtn').onclick = () => {
+        const lastFactualDate = new Date('2024-10-26');
+        startGameplay(lastFactualDate);
+    };
+
+    document.getElementById('loadUserIntelBtn').onclick = async () => {
+        const userInput = document.getElementById('userJsonInput').value;
+        const errorDiv = document.getElementById('userIntelError');
+        errorDiv.classList.add('hidden');
+
+        if (!userInput.trim()) {
+            errorDiv.textContent = "Error: Input is empty. Paste JSON from an AI or click Skip.";
+            errorDiv.classList.remove('hidden');
+            return;
+        }
+
+        try {
+            const bridgingEvents = JSON.parse(userInput);
+            if (!Array.isArray(bridgingEvents)) {
+                throw new Error("Input is not a valid JSON array.");
+            }
+
+            logEvent(`--- USER-PROVIDED INTELLIGENCE UPDATE ---`, "system", new Date());
+            let lastDate = new Date('2024-10-26');
+            
+            bridgingEvents.sort((a, b) => new Date(a.date) - new Date(b.date));
+
+            for (const event of bridgingEvents) {
+                if(!event.date || !event.event || !event.faction){
+                    throw new Error("One or more events in the array are missing a required key (date, event, faction).");
+                }
+                const eventDate = new Date(event.date.replace(/-/g, '/'));
+                await sleep(50);
+                logEvent(event.event, event.faction, eventDate);
+                if (eventDate > lastDate) lastDate = eventDate;
+            }
+            startGameplay(lastDate);
+        } catch (error) {
+            errorDiv.textContent = `JSON Parse Error: ${error.message}. Please ensure you paste the full, valid JSON array from the AI.`;
+            errorDiv.classList.remove('hidden');
+        }
+    };
+    
+    // --- Cheat Console Logic ---
+    function logToConsole(message, type = 'chat') {
+        const p = document.createElement('p');
+        if (type === 'cheat') {
+            p.className = 'text-yellow-400';
+            p.textContent = `> ${message}`;
+        } else if (type === 'system') {
+            p.className = 'text-cyan-300';
+            p.innerHTML = `[SYSTEM] ${message}`;
+        } else {
+            p.textContent = message;
+        }
+        cheatOutput.appendChild(p);
+        cheatOutput.scrollTop = cheatOutput.scrollHeight;
+    }
+    
+    function parseCommand(command) {
+        const parts = command.toLowerCase().split(' ');
+        const cmd = parts[0];
+        const args = parts.slice(1);
+
+        if (cmd.startsWith('/')) {
+            logToConsole(command, 'cheat');
+        } else {
+             logToConsole(`${gameState.playerFaction || 'Spectator'}: ${command}`);
+             return;
+        }
+
+        switch(cmd) {
+            case '/godmode':
+                godModeActive = !godModeActive;
+                logToConsole(`God mode ${godModeActive ? 'ACTIVATED' : 'DEACTIVATED'}.`, 'system');
+                updateUI();
+                break;
+            case '/maxmoney':
+                if (gameState.playerFaction) {
+                    gameState[gameState.playerFaction.toLowerCase()].budget = 999999;
+                    logToConsole('You feel richer.', 'system');
+                    updateUI();
+                } else {
+                    logToConsole('No player faction selected.', 'system');
+                }
+                break;
+            case '/maxhealth':
+                 if(gameState.playerFaction) {
+                     gameState.units.filter(u => u.faction === gameState.playerFaction).forEach(u => u.currentHp = u.hp);
+                     logToConsole('Player units repaired.', 'system');
+                     updateUI();
+                 } else {
+                     logToConsole('No player faction selected.', 'system');
+                 }
+                 break;
+            case '/maxweapon':
+                 if (gameState.playerFaction) {
+                     const playerState = gameState[gameState.playerFaction.toLowerCase()];
+                     if (playerState.hasOwnProperty('fattah1Stockpile')) {
+                         playerState.fattah1Stockpile = 8;
+                     }
+                     playerState.nukeProg = 100;
+                     playerState.nukeReady = true;
+                     playerState.empProg = 100;
+                     playerState.empReady = true;
+                     logToConsole('R&D and strategic weapons maxed out.', 'system');
+                     updateUI();
+                 } else {
+                     logToConsole('No player faction selected.', 'system');
+                 }
+                 break;
+            case '/weapon':
+                if (gameState.playerFaction && args.length > 0) {
+                     const unitName = args.join(' ');
+                     const foundUnit = Object.keys(UNIT_TYPES).find(key => key.toLowerCase() === unitName);
+                     if (foundUnit && UNIT_TYPES[foundUnit].faction === gameState.playerFaction) {
+                         const capitalId = Object.keys(gameState.nodes).find(id => gameState.nodes[id].capital && gameState.nodes[id].faction === gameState.playerFaction);
+                         if (capitalId) {
+                             createUnit(foundUnit, capitalId);
+                             logToConsole(`Spawned 1x ${foundUnit} at ${gameState.nodes[capitalId].name}.`, 'system');
+                             updateUI();
+                         } else {
+                             logToConsole('Could not find player capital to spawn unit.', 'system');
+                         }
+                     } else {
+                         logToConsole(`Weapon/Unit "${unitName}" not found or not available for your faction.`, 'system');
+                     }
+                } else {
+                    logToConsole('Usage: /weapon [unit_name]', 'system');
+                }
+                break;
+            case '/undo':
+            case '/cancel':
+                if(previousGameState) {
+                    gameState = JSON.parse(previousGameState);
+                    logToConsole('Reverted to previous state.', 'system');
+                    updateUI();
+                } else {
+                    logToConsole('No previous state to undo.', 'system');
+                }
+                break;
+            default:
+                logToConsole(`Unknown command: ${cmd}`, 'system');
+                break;
+        }
+    }
+
+
+    // --- Event Listeners ---
+    document.getElementById('playAsIsrael').onclick = () => selectGameMode('israel');
+    document.getElementById('playAsIran').onclick = () => selectGameMode('iran');
+    document.getElementById('spectatorMode').onclick = () => selectGameMode(null);
+    commandCenterBtn.onclick = openCommandCenter;
+    diplomacyBtn.onclick = () => {
+        const ally = gameState.playerFaction === FACTIONS.ISRAEL ? ALLIES.USA : ALLIES.RUSSIA;
+        openDiplomacyModal(ally);
+    };
+    closeCommandCenterBtn.onclick = closeCommandCenter;
+    closeStrategyModalBtn.onclick = () => { strategyModal.style.display = 'none'; };
+    closeDiplomacyModalBtn.onclick = closeDiplomacyModal;
+    
+    beginSimBtn.addEventListener('click', async () => {
+        beginSimBtn.classList.add('hidden');
+        gameState.isProcessing = true;
+        updateUI();
+
+        logEvent("The future is now. Executing turn.", "system");
+
+        if (!gameState.playerFaction) {
+            await processTurns();
+        } else if (gameState.turn !== gameState.playerFaction) {
+            await runSingleAITurn();
+        } else {
+            gameState.isProcessing = false;
+            updateUI();
+        }
+    });
+
+    endTurnBtn.onclick = async () => {
+        if (gameState.turn !== gameState.playerFaction || gameState.isProcessing) return;
+        await endTurn();
+        if (!gameState.winner) {
+             await runSingleAITurn();
+        }
+    };
+    startOverBtn.onclick = () => initGame(gameState.playerFaction);
+    exportLogBtn.onclick = () => {
+        const logText = Array.from(gameLog.children).map(e => e.textContent).reverse().join('\n');
+        const blob = new Blob([logText], { type: 'text/plain' });
+        const url = URL.createObjectURL(blob);
+        const a = document.createElement('a');
+        a.href = url; a.download = `conflict_log_${new Date().toISOString()}.txt`;
+        a.click();
+        URL.revokeObjectURL(url);
+    };
+
+    endGameBtn.onclick = () => {
+        if (animationFrameId) {
+            cancelAnimationFrame(animationFrameId);
+            animationFrameId = null;
+        }
+        gameState = {};
+        modal.style.display = 'flex';
+        modal.style.opacity = '1';
+        gameLog.innerHTML = '';
+        infoPanel.innerHTML = '';
+        turnIndicator.innerHTML = '';
+        actionPanel.innerHTML = '';
+        if (ctx) ctx.clearRect(0,0,canvas.width, canvas.height);
+    };
+
+    window.addEventListener('resize', () => {
+        if(!canvas || !mapContainer) return;
+        canvas.width = mapContainer.clientWidth;
+        canvas.height = mapContainer.clientHeight;
+        window.dispatchEvent(new Event('resize'));
+    });
+
+    canvas.addEventListener('click', (e) => {
+        if (!gameState.playerFaction || gameState.turn !== gameState.playerFaction || gameState.isProcessing) return;
+        const rect = canvas.getBoundingClientRect();
+        const clickX = e.clientX - rect.left;
+        const clickY = e.clientY - rect.top;
+
+        let clickedUnit = null, clickedNodeId = null;
+        
+        const unitsAtClick = gameState.units.filter(unit => {
+            const node = gameState.nodes[unit.nodeId];
+            if (!node) return false;
+            const nodeX = node.x * canvas.width;
+            const nodeY = node.y * canvas.height;
+            return Math.hypot(clickX - nodeX, clickY - nodeY) < 20 && isVisible(unit, gameState.turn);
+        });
+
+        if (unitsAtClick.length > 0) {
+            clickedUnit = unitsAtClick.find(u => u.faction === gameState.playerFaction) || unitsAtClick[0];
+        }
+
+        if (!clickedUnit) {
+            clickedNodeId = Object.keys(gameState.nodes).find(id => {
+                const node = gameState.nodes[id];
+                if (!node) return false;
+                const nodeX = node.x * canvas.width;
+                const nodeY = node.y * canvas.height;
+                return Math.hypot(clickX - nodeX, clickY - nodeY) < 20;
+            });
+        }
+
+        if (clickedUnit && clickedUnit.faction === gameState.turn) {
+            gameState.selectedUnitId = clickedUnit.id;
+            gameState.selectedNodeId = null;
+        } else if (clickedNodeId) {
+            gameState.selectedNodeId = clickedNodeId;
+            gameState.selectedUnitId = null;
+        } else {
+            gameState.selectedUnitId = null;
+            gameState.selectedNodeId = null;
+        }
+        updateUI();
+    });
+    
+    // Cheat console listeners
+    document.addEventListener('keydown', (e) => {
+        const key = e.key.toLowerCase();
+        if (key === konamiCode[konamiIndex]) {
+            konamiIndex++;
+            if (konamiIndex === konamiCode.length) {
+                konamiIndex = 0;
+                const isHidden = cheatConsole.classList.toggle('hidden');
+                if(!isHidden){
+                    cheatOutput.innerHTML = ''; // Clear previous messages
+                    logToConsole("Konami Code accepted. Welcome, Commander.", "system");
+                    logToConsole("--- Available Cheats ---", "system");
+                    logToConsole("<span class='text-yellow-400'>/godmode</span> - Toggle invincibility & visibility", "system");
+                    logToConsole("<span class='text-yellow-400'>/maxmoney</span> - Get 999,999 budget", "system");
+                    logToConsole("<span class='text-yellow-400'>/maxhealth</span> - Heal all your units", "system");
+                    logToConsole("<span class='text-yellow-400'>/maxweapon</span> - Resupply all units, max R&D", "system");
+                    logToConsole("<span class='text-yellow-400'>/weapon [name]</span> - Spawn a unit", "system");
+                    logToConsole("<span class='text-yellow-400'>/undo</span> or <span class='text-yellow-400'>/cancel</span> - Revert last action", "system");
+                }
+            }
+        } else {
+            konamiIndex = (key === konamiCode[0]) ? 1 : 0;
+        }
+    });
+
+    cheatInput.addEventListener('keydown', (e) => {
+        if (e.key === 'Enter') {
+            const command = cheatInput.value;
+            if (command.trim() !== '') {
+                parseCommand(command);
+            }
+            cheatInput.value = '';
+        }
+    });
+
+
+    // Initial setup
+    canvas.width = mapContainer.clientWidth;
+    canvas.height = mapContainer.clientHeight;
+});
+</script>
+</body>
+</html>
